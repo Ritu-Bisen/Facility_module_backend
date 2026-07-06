@@ -1,0 +1,1870 @@
+{
+  "info": {
+    "name": "Facility Module API Collection",
+    "description": "Organized collection of all APIs for the Facility Module grouped by Page.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth - Password Login",
+      "description": "Login endpoints using Password. Tokens are auto-saved to collection variables on success.",
+      "item": [
+        {
+          "name": "Login with Email (Success)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login/email",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login",
+                "email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"chctilda@dpdmis.in\",\n  \"password\": \"Common@123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response has tokens', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.accessToken).to.be.a('string');",
+                  "  pm.expect(json.refreshToken).to.be.a('string');",
+                  "  if (json.accessToken) { pm.collectionVariables.set('accessToken', json.accessToken); }",
+                  "  if (json.refreshToken) { pm.collectionVariables.set('refreshToken', json.refreshToken); }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login with Phone (Success)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login/phone",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login",
+                "phone"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNo\": \"9876543210\",\n  \"password\": \"Common@123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response has tokens', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.accessToken).to.be.a('string');",
+                  "  pm.expect(json.refreshToken).to.be.a('string');",
+                  "  if (json.accessToken) { pm.collectionVariables.set('accessToken', json.accessToken); }",
+                  "  if (json.refreshToken) { pm.collectionVariables.set('refreshToken', json.refreshToken); }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth - OTP Login",
+      "description": "Login endpoints using OTP. Verify OTP requests auto-save tokens on success.",
+      "item": [
+        {
+          "name": "1. Send OTP (Email)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/otp/send",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "otp",
+                "send"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"email\",\n  \"identifier\": \"chctilda@dpdmis.in\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1. Send OTP (Phone)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/otp/send",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "otp",
+                "send"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"phone\",\n  \"identifier\": \"9876543210\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Verify OTP (Email)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/otp/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "otp",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"email\",\n  \"identifier\": \"chctilda@dpdmis.in\",\n  \"otp\": \"123456\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response has tokens', function () {",
+                  "  var json = pm.response.json();",
+                  "  if (json.accessToken) { pm.collectionVariables.set('accessToken', json.accessToken); }",
+                  "  if (json.refreshToken) { pm.collectionVariables.set('refreshToken', json.refreshToken); }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Verify OTP (Phone)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/otp/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "otp",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"phone\",\n  \"identifier\": \"9876543210\",\n  \"otp\": \"123456\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response has tokens', function () {",
+                  "  var json = pm.response.json();",
+                  "  if (json.accessToken) { pm.collectionVariables.set('accessToken', json.accessToken); }",
+                  "  if (json.refreshToken) { pm.collectionVariables.set('refreshToken', json.refreshToken); }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Settings & Facilities",
+      "item": [
+        {
+          "name": "GET /api/facility/items/:facilityId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/facility/items/{{facilityId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "facility",
+                "items",
+                "{{facilityId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/users",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/users/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/users/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Inter Facility Transfers",
+      "item": [
+        {
+          "name": "GET /api/in-facility-transfer/list",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/in-facility-transfer/list",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "in-facility-transfer",
+                "list"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/in-facility-transfer/receipts-list",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/in-facility-transfer/receipts-list",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "in-facility-transfer",
+                "receipts-list"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/in-facility-transfer/facilities/:facilityId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/in-facility-transfer/facilities/{{facilityId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "in-facility-transfer",
+                "facilities",
+                "{{facilityId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/in-facility-transfer/generate-issue-no",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/in-facility-transfer/generate-issue-no",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "in-facility-transfer",
+                "generate-issue-no"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/in-facility-transfer/items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/in-facility-transfer/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "in-facility-transfer",
+                "items"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/in-facility-transfer/item-details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/in-facility-transfer/item-details",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "in-facility-transfer",
+                "item-details"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/in-facility-transfer/issue-item",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/in-facility-transfer/issue-item",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "in-facility-transfer",
+                "issue-item"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/in-facility-transfer/issue-item/:issueItemId",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/in-facility-transfer/issue-item/{{issueItemId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "in-facility-transfer",
+                "issue-item",
+                "{{issueItemId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/in-facility-transfer/issue/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/in-facility-transfer/issue/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "in-facility-transfer",
+                "issue",
+                "{{id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/in-facility-transfer/issue/:id",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/in-facility-transfer/issue/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "in-facility-transfer",
+                "issue",
+                "{{id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Legacy / Miscellaneous",
+      "item": [
+        {
+          "name": "GET /api/issues/generate-number/:facilityId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/issues/generate-number/{{facilityId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "issues",
+                "generate-number",
+                "{{facilityId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/issues/generate-and-save/:facilityId",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/issues/generate-and-save/{{facilityId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "issues",
+                "generate-and-save",
+                "{{facilityId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Items & Catalog",
+      "item": [
+        {
+          "name": "GET /api/items/:itemId/details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/items/{{itemId}}/details",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "items",
+                "{{itemId}}",
+                "details"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/items/drugs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/items/drugs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "items",
+                "drugs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/items/types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/items/types",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "items",
+                "types"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Monthly Indents",
+      "item": [
+        {
+          "name": "GET /api/monthly-indent/programs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/programs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "programs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/monthly-indent/list",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/list",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "list"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/monthly-indent/incomplete",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/incomplete",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "incomplete"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/monthly-indent/generate-no",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/generate-no",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "generate-no"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/monthly-indent",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/monthly-indent/fm-items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/fm-items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "fm-items"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/monthly-indent/warehouse-items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/warehouse-items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "warehouse-items"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/monthly-indent/dhs-indent-items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/dhs-indent-items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "dhs-indent-items"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/monthly-indent/other-item",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/other-item",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "other-item"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/monthly-indent/items/:nocItemId",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/items/{{nocItemId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "items",
+                "{{nocItemId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/monthly-indent/items/:nocItemId",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/items/{{nocItemId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "items",
+                "{{nocItemId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/monthly-indent/:nocId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/{{nocId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "{{nocId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/monthly-indent/:nocId",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/{{nocId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "{{nocId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/monthly-indent/:nocId",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/{{nocId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "{{nocId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/monthly-indent/:nocId/complete",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/{{nocId}}/complete",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "{{nocId}}",
+                "complete"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/monthly-indent/:nocId/check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/{{nocId}}/check",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "{{nocId}}",
+                "check"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/monthly-indent/:nocId/items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/{{nocId}}/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "{{nocId}}",
+                "items"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/monthly-indent/:nocId/items",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/monthly-indent/{{nocId}}/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "monthly-indent",
+                "{{nocId}}",
+                "items"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "SHC Indent Approvals",
+      "item": [
+        {
+          "name": "GET /api/shc-indent-approvals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/shc-indent-approvals",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "shc-indent-approvals"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/shc-indent-approval/:nocId/header",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/shc-indent-approval/{{nocId}}/header",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "shc-indent-approval",
+                "{{nocId}}",
+                "header"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/shc-indent-approval/:nocId/items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/shc-indent-approval/{{nocId}}/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "shc-indent-approval",
+                "{{nocId}}",
+                "items"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/shc-indent-approval/approve",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/shc-indent-approval/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "shc-indent-approval",
+                "approve"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/shc-indent-approval/complete/:nocId",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/shc-indent-approval/complete/{{nocId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "shc-indent-approval",
+                "complete",
+                "{{nocId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/shc-indents/fin-years",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/shc-indents/fin-years",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "shc-indents",
+                "fin-years"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/shc-indents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/shc-indents",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "shc-indents"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Store / Stock Reports",
+      "item": [
+        {
+          "name": "GET /api/store/current-stock-drug-wise",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/store/current-stock-drug-wise",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "store",
+                "current-stock-drug-wise"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/store/facility-stock-item-wise",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/store/facility-stock-item-wise",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "store",
+                "facility-stock-item-wise"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/store/current-stock-batch-wise",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/store/current-stock-batch-wise",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "store",
+                "current-stock-batch-wise"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/store/facility-stock-drug-wise",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/store/facility-stock-drug-wise",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "store",
+                "facility-stock-drug-wise"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/store/warehouse-stock",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/store/warehouse-stock",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "store",
+                "warehouse-stock"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Ward Issues",
+      "item": [
+        {
+          "name": "GET /api/ward-issue/wards",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/wards",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "wards"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/generate-issue-no",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/generate-issue-no",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "generate-issue-no"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/acc-years",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/acc-years",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "acc-years"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/opening-stock-check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/opening-stock-check",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "opening-stock-check"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/list",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/list",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "list"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/returns-wards",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/returns-wards",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "returns-wards"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/returns-receipts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/returns-receipts",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "returns-receipts"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "items"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/mas-items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/mas-items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "mas-items"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/facility-stock",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/facility-stock",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "facility-stock"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/incomplete",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/incomplete",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "incomplete"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "{{id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/ward-issue",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/ward-issue/:id",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "{{id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/:id/items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/{{id}}/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "{{id}}",
+                "items"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/ward-issue/:id/items",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/{{id}}/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "{{id}}",
+                "items"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PUT /api/ward-issue/items/:issueItemId",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/items/{{issueItemId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "items",
+                "{{issueItemId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/ward-issue/items/:issueItemId",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/items/{{issueItemId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "items",
+                "{{issueItemId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/ward-issue/:id/complete",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/{{id}}/complete",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "{{id}}",
+                "complete"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/ward-issue/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/{{id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "{{id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/batches/:issueItemId/:itemId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/batches/{{issueItemId}}/{{itemId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "batches",
+                "{{issueItemId}}",
+                "{{itemId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/ward-issue/:id/print",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/ward-issue/{{id}}/print",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ward-issue",
+                "{{id}}",
+                "print"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Warehouse Receipts",
+      "item": [
+        {
+          "name": "GET /api/warehouse-receipt/indents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/warehouse-receipt/indents",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "warehouse-receipt",
+                "indents"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/warehouse-receipt/receipts/:indentId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/warehouse-receipt/receipts/{{indentId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "warehouse-receipt",
+                "receipts",
+                "{{indentId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/warehouse-receipt/fin-years",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/warehouse-receipt/fin-years",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "warehouse-receipt",
+                "fin-years"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/warehouse-receipt/view/:receiptId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/warehouse-receipt/view/{{receiptId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "warehouse-receipt",
+                "view",
+                "{{receiptId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/warehouse-receipt/view/:receiptId/items",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/warehouse-receipt/view/{{receiptId}}/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "warehouse-receipt",
+                "view",
+                "{{receiptId}}",
+                "items"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/warehouse-receipt/locations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/warehouse-receipt/locations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "warehouse-receipt",
+                "locations"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/warehouse-receipt/batches/:indentItemId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/warehouse-receipt/batches/{{indentItemId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "warehouse-receipt",
+                "batches",
+                "{{indentItemId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/warehouse-receipt/view/:receiptId/batches",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/warehouse-receipt/view/{{receiptId}}/batches",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "warehouse-receipt",
+                "view",
+                "{{receiptId}}",
+                "batches"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/warehouse-receipt/complete/:receiptId",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/warehouse-receipt/complete/{{receiptId}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "warehouse-receipt",
+                "complete",
+                "{{receiptId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

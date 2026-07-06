@@ -1,0 +1,1 @@
+const db = require('./src/config/db'); async function test() { try { await db.initialize(); const r = await db.execute(`SELECT column_name FROM all_tab_columns WHERE table_name = 'TBFACILITYRECEIPTS'`); console.log(r.rows); process.exit(0); } catch(e) { console.error(e); process.exit(1); } } test();

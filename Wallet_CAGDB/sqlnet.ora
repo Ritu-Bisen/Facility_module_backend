@@ -1,0 +1,2 @@
+WALLET_LOCATION = (SOURCE = (METHOD = file) (METHOD_DATA = (DIRECTORY="C:\Users\ritu2\Desktop\facility_module\backend\Wallet_CAGDB")))
+SSL_SERVER_DN_MATCH=yes
