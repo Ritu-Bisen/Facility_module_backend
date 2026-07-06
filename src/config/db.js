@@ -8,21 +8,21 @@ async function initialize() {
     const walletPath = process.env.WALLET_DIR
       ? path.resolve(__dirname, '../../', process.env.WALLET_DIR)
       : path.resolve(__dirname, '../../wallet');
-    logger.info(`Initializing Oracle Client with wallet directory: ${walletPath}`);
+    logger.info(`Initializing Oracle DB (Thin Mode) with wallet directory: ${walletPath}`);
     
-    // Initialize Oracle Client pointing to the wallet directory
-    oracledb.initOracleClient({ configDir: walletPath });
+    // Removed oracledb.initOracleClient() to use pure JS Thin Mode which works on Render natively
     
     await oracledb.createPool({
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       connectString: process.env.DB_CONNECT_STRING,
+      walletLocation: walletPath,
       poolMin: 2,
       poolMax: 10,
       poolIncrement: 2
     });
     
-    logger.info('Oracle database connection pool created.');
+    logger.info('Oracle database connection pool created in Thin Mode.');
   } catch (err) {
     logger.error('Error initializing Oracle DB: ' + err.message);
     throw err;
