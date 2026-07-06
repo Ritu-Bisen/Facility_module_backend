@@ -1,1 +1,0 @@
-const db = require('./src/config/db'); async function test() { try { await db.initialize(); const r = await db.execute(`SELECT AccYearID as id, AccYearName as name FROM tbAccYear`); console.log(r.rows); process.exit(0); } catch(e) { console.error(e); process.exit(1); } } test();

@@ -1,1 +1,0 @@
-const db = require('./src/config/db'); async function test() { try { await db.initialize(); let r = await db.execute(`SELECT f.FacilityName, f.DistrictID, d.DistrictName FROM masFacilities f LEFT JOIN masDistricts d ON f.DistrictID = d.DistrictID WHERE f.FacilityID = 26648`); console.log(r.rows); process.exit(0); } catch(e) { console.error(e); process.exit(1); } } test();

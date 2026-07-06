@@ -1,1 +1,0 @@
-const db = require('./src/config/db'); const model = require('./src/models/warehouseReceiptModel'); async function test() { try { await db.initialize(); await model.completeFacilityReceipt(508649, 23246); console.log("Completed!"); process.exit(0); } catch(e) { console.error("Error:", e); process.exit(1); } } test();

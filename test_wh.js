@@ -1,1 +1,0 @@
-const db = require('./src/config/db'); async function test() { try { await db.initialize(); let r = await db.execute(`SELECT * FROM masWarehouses WHERE WarehouseID = 2628`); console.log(r.rows); process.exit(0); } catch(e) { console.error(e); process.exit(1); } } test();

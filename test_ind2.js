@@ -1,1 +1,0 @@
-const db = require('./src/config/db'); async function test() { try { await db.initialize(); let r = await db.execute(`SELECT * FROM tbIndents WHERE RequestDocNo = '26648/NC00001/26-27'`); console.log(r.rows); process.exit(0); } catch(e) { console.error(e); process.exit(1); } } test();
