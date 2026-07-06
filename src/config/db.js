@@ -5,9 +5,13 @@ require('dotenv').config();
 
 async function initialize() {
   try {
-    const walletPath = process.env.WALLET_DIR
-      ? path.resolve(__dirname, '../../', process.env.WALLET_DIR)
-      : path.resolve(__dirname, '../../wallet');
+    // Extract just the folder name if WALLET_DIR is accidentally set as a full Windows path
+    let walletDirName = process.env.WALLET_DIR || 'wallet';
+    if (walletDirName.includes('\\') || walletDirName.includes('/')) {
+        walletDirName = path.basename(walletDirName.replace(/\\/g, '/'));
+    }
+    
+    const walletPath = path.resolve(__dirname, '../../', walletDirName);
     logger.info(`Initializing Oracle DB (Thin Mode) with wallet directory: ${walletPath}`);
     
     // Removed oracledb.initOracleClient() to use pure JS Thin Mode which works on Render natively
