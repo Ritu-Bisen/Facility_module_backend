@@ -21,6 +21,7 @@ async function initialize() {
       password: process.env.DB_PASSWORD,
       connectString: process.env.DB_CONNECT_STRING,
       walletLocation: walletPath,
+      walletPassword: process.env.WALLET_PASSWORD || process.env.DB_PASSWORD,
       poolMin: 2,
       poolMax: 10,
       poolIncrement: 2
