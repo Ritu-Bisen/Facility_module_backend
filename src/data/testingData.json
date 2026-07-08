@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1,
+    "name": "Rahul Sharma",
+    "class": "10th",
+    "age": 15,
+    "city": "Bhopal"
+  },
+  {
+    "id": 2,
+    "name": "Priya Verma",
+    "class": "9th",
+    "age": 14,
+    "city": "Indore"
+  },
+  {
+    "id": 3,
+    "name": "Amit Patel",
+    "class": "11th",
+    "age": 16,
+    "city": "Jabalpur"
+  },
+  {
+    "id": 4,
+    "name": "Sneha Gupta",
+    "class": "12th",
+    "age": 17,
+    "city": "Gwalior"
+  },
+  {
+    "id": 5,
+    "name": "Vikas Yadav",
+    "class": "8th",
+    "age": 13,
+    "city": "Sagar"
+  }
+]

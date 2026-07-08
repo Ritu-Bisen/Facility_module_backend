@@ -4,6 +4,7 @@ const cors = require('cors');
 const userRoutes = require('./routes/userRoutes');
 const authRoutes = require('./routes/authRoutes');
 const inFacilityTransferRoutes = require('./routes/inFacilityTransferRoutes');
+const breakageVoucherRoutes = require('./routes/breakageVoucherRoutes');
 const { errorHandler } = require('./middleware/errorMiddleware');
 
 dotenv.config();
@@ -18,6 +19,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/ward-issue', require('./routes/wardIssueRoutes'));
 app.use('/api/in-facility-transfer', inFacilityTransferRoutes);
+app.use('/api/breakage-voucher', breakageVoucherRoutes);
 app.use('/api/facility', require('./routes/facilityRoutes'));
 app.use('/api/items', require('./routes/itemRoutes'));
 app.use('/api/store', require('./routes/storeRoutes'));
@@ -28,6 +30,7 @@ app.use('/api/shc-indents', require('./routes/shcIndentRoutes'));
 app.use('/api/shc-indent-approvals', require('./routes/shcIndentApprovals'));
 app.use('/api/shc-indent-approval', require('./routes/shcIndentItemRoutes'));
 app.use('/api/issues', require('./routes/issueRoutes'));
+app.use('/api/testing', require('./routes/testingRoutes'));
 
 // Error Handling Middleware
 app.use(errorHandler);
