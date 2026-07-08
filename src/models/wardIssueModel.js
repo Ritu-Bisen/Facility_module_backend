@@ -639,14 +639,15 @@ async function getPrintDetails(issueId, facilityId) {
             a.WRequestDate,
             a.WRequestBy,
             NVL(a.Status, 'IN') as Status,
-            b.WardName,
-            b.WardCode,
+            COALESCE(b.WardName, toFac.FacilityName) as WardName,
+            COALESCE(b.WardCode, toFac.FacilityCode) as WardCode,
             fac.FacilityName,
             d.DistrictName,
             c.StateName
         from tbFacilityIssues a
-        Inner Join masFacilityWards b on (b.WardID=a.WardID)
-        Inner Join masFacilities fac on (fac.FacilityID=b.FacilityID)
+        LEFT Join masFacilityWards b on (b.WardID=a.WardID)
+        LEFT Join masFacilities toFac on (toFac.FacilityID=a.ToFacilityID)
+        Inner Join masFacilities fac on (fac.FacilityID=a.FacilityID)
         Inner Join masStates c on (c.StateID=fac.StateID)
         Inner Join masDistricts d on (d.StateID=c.StateID and d.DistrictID=fac.DistrictID)
         Where a.IssueID = :issueId and a.FacilityID = :facilityId

@@ -646,3 +646,99 @@ exports.updateIssueHeader = async (req, res) => {
         res.status(500).json({ success: false, message: 'Failed to update issue' });
     }
 };
+
+exports.freezeIssue = async (req, res) => {
+    let connection;
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({ success: false, message: 'Issue ID is required' });
+        }
+
+        connection = await require('oracledb').getConnection();
+
+        // 1. Get the issue details
+        const issueQuery = `SELECT ToFacilityID, FacilityID, IssueID, IssueNo, Remarks FROM tbFacilityIssues WHERE IssueID = :id`;
+        const issueResult = await connection.execute(issueQuery, { id: Number(id) });
+        
+        if (!issueResult.rows || issueResult.rows.length === 0) {
+            throw new Error('Issue not found');
+        }
+
+        const row = issueResult.rows[0];
+        const toFacilityId = Array.isArray(row) ? row[0] : (row.TOFACILITYID || row.ToFacilityID);
+        const facilityId = Array.isArray(row) ? row[1] : (row.FACILITYID || row.FacilityID);
+        const issueNo = Array.isArray(row) ? row[3] : (row.ISSUENO || row.IssueNo);
+        const remarks = Array.isArray(row) ? row[4] : (row.REMARKS || row.Remarks);
+
+        // 2. Get the FacilityCode of the receiving facility
+        const facQuery = `SELECT FacilityCode FROM masFacilities WHERE FacilityID = :toFacilityId`;
+        const facResult = await connection.execute(facQuery, { toFacilityId: Number(toFacilityId) });
+        let facilityCode = '00000';
+        if (facResult.rows && facResult.rows.length > 0) {
+            const facRow = facResult.rows[0];
+            facilityCode = Array.isArray(facRow) ? facRow[0] : (facRow.FACILITYCODE || facRow.FacilityCode);
+        }
+
+        // 3. Generate FacReceiptNo
+        // Extract the last two parts of IssueNo (e.g., '08037/SP/00002/26-27' -> '00002/26-27')
+        const issueNoParts = (issueNo || '').split('/');
+        let lastTwoParts = '00000/00-00';
+        if (issueNoParts.length >= 2) {
+            lastTwoParts = `${issueNoParts[issueNoParts.length - 2]}/${issueNoParts[issueNoParts.length - 1]}`;
+        }
+        const facReceiptNo = `${facilityCode}/SP/${lastTwoParts}`;
+
+        // 4. Complete the issue
+        const completeQuery = `UPDATE tbFacilityIssues SET Status = 'C' WHERE IssueID = :id`;
+        await connection.execute(completeQuery, { id: Number(id) });
+
+        // 5. Create tbFacilityReceipts
+        const insertReceiptQuery = `
+            INSERT INTO tbFacilityReceipts
+            (
+                FacReceiptNo,
+                FacReceiptDate,
+                FacilityID,
+                WarehouseID,
+                IssueID,
+                Status,
+                Remarks,
+                FacReceiptType
+            )
+            VALUES
+            (
+                :facReceiptNo,
+                SYSDATE,
+                :toFacilityId,
+                :facilityId,
+                :issueId,
+                'I',
+                :remarks,
+                'SP'
+            )
+        `;
+        
+        await connection.execute(insertReceiptQuery, {
+            facReceiptNo: facReceiptNo,
+            toFacilityId: Number(toFacilityId),
+            facilityId: Number(facilityId),
+            issueId: Number(id),
+            remarks: remarks || ''
+        });
+
+        await connection.commit();
+        return res.status(200).json({ success: true, message: 'Issue frozen successfully' });
+    } catch (error) {
+        if (connection) {
+            try { await connection.rollback(); } catch (e) {}
+        }
+        console.error('Error freezing issue:', error);
+        res.status(500).json({ success: false, message: error.message || 'Failed to freeze issue' });
+    } finally {
+        if (connection) {
+            try { await connection.close(); } catch (e) {}
+        }
+    }
+};

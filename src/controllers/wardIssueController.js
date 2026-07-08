@@ -189,7 +189,7 @@ async function updateIssueItem(req, res) {
 async function deleteIssueItem(req, res) {
     try {
         const { issueItemId } = req.params;
-        await wardIssueModel.deleteIssueItem(issueItemId);
+        await wardIssueModel.deleteIssueItem(Number(issueItemId));
         res.json({ message: "Item Deleted" });
     } catch (error) {
         res.status(500).json({ error: "Delete not allowed, references found" });
@@ -199,7 +199,7 @@ async function deleteIssueItem(req, res) {
 async function completeIssue(req, res) {
     try {
         const { id } = req.params;
-        await wardIssueModel.completeIssue(id);
+        await wardIssueModel.completeIssue(Number(id));
         res.json({ message: "Status changed successfully" });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -209,7 +209,7 @@ async function completeIssue(req, res) {
 async function deleteIssue(req, res) {
     try {
         const { id } = req.params;
-        await wardIssueModel.deleteIssue(id);
+        await wardIssueModel.deleteIssue(Number(id));
         res.json({ message: "Deleted successfully" });
     } catch (error) {
         res.status(500).json({ error: error.message });

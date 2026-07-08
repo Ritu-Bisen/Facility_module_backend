@@ -32,4 +32,7 @@ router.get('/issue/:id', inFacilityTransferController.getIssueById);
 // PUT /api/in-facility-transfer/issue/:id
 router.put('/issue/:id', inFacilityTransferController.updateIssueHeader);
 
+// POST /api/in-facility-transfer/issue/:id/freeze
+router.post('/issue/:id/freeze', inFacilityTransferController.freezeIssue);
+
 module.exports = router;

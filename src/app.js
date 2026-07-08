@@ -23,6 +23,7 @@ app.use('/api/items', require('./routes/itemRoutes'));
 app.use('/api/store', require('./routes/storeRoutes'));
 app.use('/api/monthly-indent', require('./routes/monthlyIndentRoutes'));
 app.use('/api/warehouse-receipt', require('./routes/warehouseReceiptRoutes'));
+app.use('/api/in-facility-receipt', require('./routes/inFacilityReceiptRoutes'));
 app.use('/api/shc-indents', require('./routes/shcIndentRoutes'));
 app.use('/api/shc-indent-approvals', require('./routes/shcIndentApprovals'));
 app.use('/api/shc-indent-approval', require('./routes/shcIndentItemRoutes'));

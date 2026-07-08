@@ -1,0 +1,12 @@
+clonecgmscl_high = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-mumbai-1.oraclecloud.com))(connect_data=(service_name=spkiz3wtjvvth8e_clonecgmscl_high.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+clonecgmscl_medium = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-mumbai-1.oraclecloud.com))(connect_data=(service_name=spkiz3wtjvvth8e_clonecgmscl_medium.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+clonecgmscl_low = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-mumbai-1.oraclecloud.com))(connect_data=(service_name=spkiz3wtjvvth8e_clonecgmscl_low.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+clonecgmscl_tp = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-mumbai-1.oraclecloud.com))(connect_data=(service_name=spkiz3wtjvvth8e_clonecgmscl_tp.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+clonecgmscl_tpurgent = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-mumbai-1.oraclecloud.com))(connect_data=(service_name=spkiz3wtjvvth8e_clonecgmscl_tpurgent.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+
+

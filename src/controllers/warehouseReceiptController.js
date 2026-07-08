@@ -167,7 +167,7 @@ async function addBatch(req, res) {
 
 async function completeReceipt(req, res) {
     try {
-        const facilityId = req.user?.facilityId || 23246; // Fallback for dev
+        const facilityId = req.user?.facilityId ; // Fallback for dev
         const receiptId = req.params.receiptId;
         
         if (!receiptId) {

@@ -5,29 +5,24 @@ require('dotenv').config();
 
 async function initialize() {
   try {
-    // Extract just the folder name if WALLET_DIR is accidentally set as a full Windows path
-    let walletDirName = process.env.WALLET_DIR || 'wallet';
-    if (walletDirName.includes('\\') || walletDirName.includes('/')) {
-        walletDirName = path.basename(walletDirName.replace(/\\/g, '/'));
-    }
+    const walletPath = process.env.WALLET_DIR
+      ? path.resolve(__dirname, '../../', process.env.WALLET_DIR)
+      : path.resolve(__dirname, '../../wallet');
+    logger.info(`Initializing Oracle Client with wallet directory: ${walletPath}`);
     
-    const walletPath = path.resolve(__dirname, '../../', walletDirName);
-    logger.info(`Initializing Oracle DB (Thin Mode) with wallet directory: ${walletPath}`);
-    
-    // Removed oracledb.initOracleClient() to use pure JS Thin Mode which works on Render natively
+    // Initialize Oracle Client pointing to the wallet directory
+    oracledb.initOracleClient({ configDir: walletPath });
     
     await oracledb.createPool({
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       connectString: process.env.DB_CONNECT_STRING,
-      walletLocation: walletPath,
-      walletPassword: process.env.WALLET_PASSWORD,
       poolMin: 2,
       poolMax: 10,
       poolIncrement: 2
     });
     
-    logger.info('Oracle database connection pool created in Thin Mode.');
+    logger.info('Oracle database connection pool created.');
   } catch (err) {
     logger.error('Error initializing Oracle DB: ' + err.message);
     throw err;

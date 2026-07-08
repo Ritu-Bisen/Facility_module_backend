@@ -11,7 +11,7 @@ async function findByEmail(email) {
                       f.FOOTER1, f.FOOTER2, f.FOOTER3,
                       r.ROLENAME
                FROM USRUSERS u
-               INNER JOIN MASFACHEADERFOOTER f ON f.USERID = u.USERID
+               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = u.USERID
                LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
                WHERE UPPER(u.EMAILID) = UPPER(:email)`;
 
@@ -29,7 +29,7 @@ async function findByPhone(phoneNo) {
                       f.FOOTER1, f.FOOTER2, f.FOOTER3,
                       r.ROLENAME
                FROM USRUSERS u
-               INNER JOIN MASFACHEADERFOOTER f ON f.USERID = u.USERID
+               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = u.USERID
                LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
                WHERE f.FOOTER3 = :phoneNo`;
 
