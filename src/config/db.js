@@ -10,13 +10,18 @@ async function initialize() {
       : path.resolve(__dirname, '../../wallet');
     logger.info(`Initializing Oracle Client with wallet directory: ${walletPath}`);
     
-    // Initialize Oracle Client pointing to the wallet directory
-    oracledb.initOracleClient({ configDir: walletPath });
+    // Ensure node-oracledb can find tnsnames.ora and sqlnet.ora in Thin mode
+    process.env.TNS_ADMIN = walletPath;
+    
+    // In node-oracledb v6+, we do not call initOracleClient if we want to use Thin mode
+    // (Thick mode requires Oracle Instant Client installed, causing DPI-1047 if missing).
     
     await oracledb.createPool({
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       connectString: process.env.DB_CONNECT_STRING,
+      walletLocation: walletPath, // Explicitly tell node-oracledb where the wallet is
+      walletPassword: process.env.WALLET_PASSWORD,
       poolMin: 2,
       poolMax: 10,
       poolIncrement: 2

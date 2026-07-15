@@ -412,11 +412,12 @@ async function updateFacilityAllotQtyOP(facilityId, itemId, issueQty, issueItemI
 
 async function getIncompleteIssue(facilityId) {
     const query = `
-        SELECT IssueID, IssueNo, WardID, IssueDate, WRequestDate, WRequestBy, Status
-        FROM tbFacilityIssues
-        WHERE FacilityID = :facilityId
-          AND NVL(Status, 'IN') = 'IN'
-          AND IssueType = 'NO'
+        SELECT t.IssueID, t.IssueNo, t.WardID, t.IssueDate, t.WRequestDate, t.WRequestBy, t.Status, w.WardName
+        FROM tbFacilityIssues t
+        LEFT JOIN masFacilityWards w ON t.WardID = w.WardID
+        WHERE t.FacilityID = :facilityId
+          AND NVL(t.Status, 'IN') = 'IN'
+          AND t.IssueType = 'NO'
           AND ROWNUM = 1
     `;
     const result = await db.execute(query, { facilityId });
@@ -429,7 +430,8 @@ async function getIncompleteIssue(facilityId) {
             IssueDate: row[3],
             WRequestDate: row[4],
             WRequestBy: row[5],
-            Status: row[6]
+            Status: row[6],
+            WardName: row[7]
         } : {
             IssueID: row.ISSUEID || row.issueId,
             IssueNo: row.ISSUENO || row.issueNo,
@@ -437,7 +439,8 @@ async function getIncompleteIssue(facilityId) {
             IssueDate: row.ISSUEDATE || row.issueDate,
             WRequestDate: row.WREQUESTDATE || row.wrequestDate,
             WRequestBy: row.WREQUESTBY || row.wrequestBy,
-            Status: row.STATUS || row.status
+            Status: row.STATUS || row.status,
+            WardName: row.WARDNAME || row.wardName
         };
     }
     return null;

@@ -548,7 +548,8 @@ exports.getIssueById = async (req, res) => {
                 IssueNo,
                 IssueDate,
                 Status,
-                Remarks
+                Remarks,
+                WRequestBy
             FROM tbFacilityIssues WHERE IssueID = :id
         `;
         const issueResult = await db.execute(issueQuery, { id: Number(id) });
@@ -577,14 +578,14 @@ exports.getIssueById = async (req, res) => {
             IssueNo: issue[2],
             IssueDate: issue[3],
             Status: issue[4],
-            Remarks: issue[5]
+            Remarks: issue[5] || issue[6]
         } : {
             IssueID: issue.ISSUEID || issue.IssueID || issue.issueid,
             ToFacilityID: issue.TOFACILITYID || issue.ToFacilityID || issue.tofacilityid,
             IssueNo: issue.ISSUENO || issue.IssueNo || issue.issueno,
             IssueDate: issue.ISSUEDATE || issue.IssueDate || issue.issuedate,
             Status: issue.STATUS || issue.Status || issue.status,
-            Remarks: issue.REMARKS || issue.Remarks || issue.remarks
+            Remarks: issue.REMARKS || issue.Remarks || issue.remarks || issue.WREQUESTBY || issue.WRequestBy || issue.wrequestby
         };
 
         const mappedItems = (itemsResult.rows || []).map(row => {
