@@ -222,30 +222,23 @@ async function getBatches(req, res) {
     const facilityId = req.user.facilityId;
 
     const query = `
-      SELECT
-          ri.FacReceiptItemID,
-          rb.BatchNo,
-          rb.MfgDate,
-          rb.ExpDate,
-          NVL(a.IssueQty,0) IssueQty,
-          rb.Inwno,
-          NVL(mr.locationno,'0') StockLocation
+      SELECT 0 SlNo,
+             ri.FacReceiptItemID,
+             rb.BatchNo,
+             rb.MfgDate,
+             rb.ExpDate,
+             NVL(a.IssueQty,0) AbsRQty,
+             CASE WHEN a.status='C' THEN NVL(a.issueqty,0) ELSE NVL(a.issueqty,0) END IssueQty,
+             NVL(a.IssueQty,0) AllotQty,
+             rb.Inwno,
+             rb.StockLocation
       FROM tbfacilityoutwards a
-      INNER JOIN tbfacilityissueitems tbi
-          ON tbi.issueitemid = a.issueitemid
-      INNER JOIN tbfacilityissues tb
-          ON tb.issueid = tbi.issueid
-      INNER JOIN tbFacilityReceiptBatches rb
-          ON rb.inwno = a.inwno
-          AND rb.facreceiptitemid = a.facreceiptitemid
-          AND (rb.whissueblock IS NULL OR rb.whissueblock = 0)
-      LEFT JOIN masracks mr
-          ON mr.rackid = rb.StockLocation
-      INNER JOIN tbfacilityreceiptitems ri
-          ON ri.facreceiptitemid = rb.facreceiptitemid
+      INNER JOIN tbfacilityissueitems tbi ON tbi.issueitemid = a.issueitemid
+      INNER JOIN tbfacilityissues tb ON tb.issueid = tbi.issueid
+      INNER JOIN tbFacilityReceiptBatches rb ON rb.inwno = a.inwno AND rb.facreceiptitemid = a.facreceiptitemid
+      INNER JOIN tbfacilityreceiptitems ri ON ri.facreceiptitemid = rb.facreceiptitemid
       WHERE tb.FacilityID = :facilityId
-      AND tbi.IssueItemID = :issueItemId
-      AND tbi.ItemID = :itemId
+        AND tbi.IssueItemID = :issueItemId
       ORDER BY rb.expdate
     `;
 
@@ -253,8 +246,7 @@ async function getBatches(req, res) {
       query,
       {
         facilityId,
-        issueItemId,
-        itemId,
+        issueItemId
       },
       {
         outFormat: oracledb.OUT_FORMAT_OBJECT,

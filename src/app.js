@@ -7,7 +7,8 @@ const inFacilityTransferRoutes = require('./routes/inFacilityTransferRoutes');
 const breakageVoucherRoutes = require('./routes/breakageVoucherRoutes');
 const { errorHandler } = require('./middleware/errorMiddleware');
 
-dotenv.config();
+const path = require('path');
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 
@@ -40,7 +41,12 @@ app.use('/api/doctor-info', require('./routes/doctorInfoRoutes'));
 app.use('/api/indent-to-other-facility', require('./routes/indentToOtherFacilityRoutes'));
 app.use('/api/inter-facility-issue-online', require('./routes/interFacilityIssueOnlineRoutes'));
 app.use('/api/online-transfer-items', require('./routes/onlineTransferItemsRoutes'));
-
+app.use('/api/noc-approval', require('./routes/nocApprovalRoutes'));
+app.use('/api/stock-register', require('./routes/stockRegisterRoutes'));
+app.use('/api/annual-indent', require('./routes/annualIndentRoutes'));
+app.use('/api/reports', require('./routes/reportRoutes'));
+app.use('/api/roles', require('./routes/roleRoutes'));
+app.use('/api/facility-access', require('./routes/facilityAccessRoutes'));
 // Error Handling Middleware
 app.use(errorHandler);
 

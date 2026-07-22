@@ -11,6 +11,12 @@ router.use(authenticate);
 // GET  /api/monthly-indent/programs
 router.get('/programs', ctrl.getPrograms);
 
+// GET  /api/monthly-indent/item-categories
+router.get('/item-categories', ctrl.getItemCategories);
+
+// GET  /api/monthly-indent/item-types
+router.get('/item-types', ctrl.getItemTypes);
+
 // GET  /api/monthly-indent/list?accYrSetId=&status=
 router.get('/list', ctrl.getNocList);
 
@@ -33,6 +39,9 @@ router.get('/warehouse-items', ctrl.getWarehouseItems);
 
 // GET  /api/monthly-indent/dhs-indent-items
 router.get('/dhs-indent-items', ctrl.getDhsIndentItems);
+
+// GET  /api/monthly-indent/against-approval-indent
+router.get('/against-approval-indent', ctrl.getAgainstApprovalIndentItems);
 
 // GET  /api/monthly-indent/other-item
 router.get('/other-item', ctrl.getOtherItem);

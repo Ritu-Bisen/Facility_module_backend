@@ -65,3 +65,15 @@ exports.getItemsForIssue = async (req, res) => {
         res.status(500).json({ success: false, message: 'Server error' });
     }
 };
+
+exports.getBatches = async (req, res) => {
+    try {
+        const facilityId = req.user.facilityId;
+        const { issueItemId, itemId } = req.params;
+        const data = await model.getBatches(facilityId, issueItemId, itemId);
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};

@@ -60,10 +60,19 @@ async function updatePassword(userId, newHashedPassword) {
   await db.execute(sql, { newHashedPassword, userId }, { autoCommit: true });
 }
 
+async function insertAuditLog(userId, operation, ipAddress) {
+  const sql = `
+    INSERT INTO GENAUDITLOGS (UserID, OPERATION, LOGDATE, IPAddress) 
+    VALUES (:userId, :operation, SYSDATE, :ipAddress)
+  `;
+  await db.execute(sql, { userId, operation, ipAddress: ipAddress || '0.0.0.0' }, { autoCommit: true });
+}
+
 module.exports = {
   findByEmail,
   findByPhone,
   updateOTP,
   findUserById,
-  updatePassword
+  updatePassword,
+  insertAuditLog
 };

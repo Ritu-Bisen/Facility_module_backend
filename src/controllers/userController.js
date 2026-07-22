@@ -23,7 +23,29 @@ async function getUser(req, res, next) {
   }
 }
 
+async function getMyInfo(req, res, next) {
+  try {
+    const userId = req.user.userId; // assuming auth middleware sets this
+    const info = await userService.getExtendedUserInfo(userId);
+    res.json(info);
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getMyMenus(req, res, next) {
+  try {
+    const userId = req.user.userId;
+    const menus = await userService.getUserMenus(userId);
+    res.json(menus);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getUsers,
-  getUser
+  getUser,
+  getMyInfo,
+  getMyMenus
 };

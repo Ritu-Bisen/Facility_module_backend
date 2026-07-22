@@ -10,5 +10,6 @@ router.get('/header/issue/:issueId', controller.getIssueHeader);
 router.post('/header', controller.createIssueHeader);
 router.put('/header/:issueId', controller.updateIssueHeader);
 router.get('/items/issue/:issueId/noc/:nocId', controller.getItemsForIssue);
+router.get('/batches/:issueItemId/:itemId', controller.getBatches);
 
 module.exports = router;

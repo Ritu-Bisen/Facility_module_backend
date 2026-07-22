@@ -289,10 +289,17 @@ async function changePassword(userId, oldPassword, newPassword) {
   return { success: true, message: 'Password changed successfully' };
 }
 
+async function logout(userId, ipAddress) {
+  // 1 is the operation code for logout in the legacy system
+  await authModel.insertAuditLog(userId, 1, ipAddress);
+  return { success: true, message: 'Logged out successfully' };
+}
+
 module.exports = {
   loginWithEmail,
   loginWithPhone,
   requestOTP,
   verifyOTPAndLogin,
-  changePassword
+  changePassword,
+  logout
 };

@@ -41,28 +41,36 @@ async function getIssueHeader(issueId) {
 }
 
 async function createIssueHeader(facilityId, toFacilityId, issueDate, remarks, facIndentId) {
-    const connection = await db.getConnection();
     try {
-        const issueNoQuery = `
-            SELECT NVL(MAX(CAST(IssueNo AS NUMBER)), 0) + 1 as next_no 
+        // 1. Get facilityCode
+        const facQuery = `SELECT facilitycode FROM masfacilities WHERE facilityid = :facilityId`;
+        const facResult = await db.execute(facQuery, { facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+        const facilityCode = facResult.rows[0] ? facResult.rows[0].FACILITYCODE : 'XXXXX';
+
+        // 2. Get shaccyear
+        const accQuery = `SELECT shaccyear FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate FETCH FIRST 1 ROWS ONLY`;
+        const accResult = await db.execute(accQuery, [], { outFormat: oracledb.OUT_FORMAT_OBJECT });
+        const shaccyear = accResult.rows[0] ? accResult.rows[0].SHACCYEAR : '26-27';
+
+        // 3. Get next sequence for TR
+        const seqQuery = `
+            SELECT NVL(MAX(TO_NUMBER(REGEXP_SUBSTR(IssueNo, '[0-9]+', 1, 2))), 0) + 1 as NEXT_SEQ
             FROM tbFacilityIssues 
-            WHERE FacilityID = :facilityId 
-            AND IssueNo NOT LIKE '%[^0-9]%'
+            WHERE FacilityID = :facilityId AND IssueNo LIKE '%/TR/%'
         `;
-        // In Oracle, getting the next issue no might be more complex if they use sequence or format,
-        // but for now we follow the legacy standard (though legacy uses GenFunctions.FacAutoGenerateNumbers).
-        // Let's use a simple MAX + 1 or let the DB handle it if it's an auto-increment.
-        // Wait, legacy: GenFunctions.FacAutoGenerateNumbers(usrFacilityID, false, "TR")
-        // Often implemented as a sequence or function. We'll use a sequence if available, or just a timestamp for now to avoid clashes,
-        // actually let's implement a simple fallback or rely on an Oracle sequence if there is one.
-        // The SQL in legacy is: Insert into tbFacilityIssues (FacilityID,IssueNo,IssueDate,TOFACILITYID,WRequestBy,ISSUETYPE,IssueEDL,FacIndentID) values (...)
+        const seqResult = await db.execute(seqQuery, { facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+        const nextSeqNum = seqResult.rows[0] ? seqResult.rows[0].NEXT_SEQ : 1;
+        const nextSeqStr = String(nextSeqNum).padStart(5, '0');
+
+        // 4. Construct IssueNo
+        const nextNo = `${facilityCode}/TR/${nextSeqStr}/${shaccyear}`;
         
         const insertQuery = `
             INSERT INTO tbFacilityIssues (
                 FacilityID, IssueNo, IssueDate, TOFACILITYID, WRequestBy, ISSUETYPE, IssueEDL, FacIndentID
             ) VALUES (
                 :facilityId, 
-                (SELECT NVL(MAX(CAST(IssueNo AS NUMBER)), 0) + 1 FROM tbFacilityIssues WHERE FacilityID = :facilityId),
+                :nextNo,
                 TO_DATE(:issueDate, 'YYYY-MM-DD'),
                 :toFacilityId,
                 :remarks,
@@ -74,6 +82,7 @@ async function createIssueHeader(facilityId, toFacilityId, issueDate, remarks, f
         
         const binds = {
             facilityId,
+            nextNo,
             issueDate,
             toFacilityId,
             remarks,
@@ -81,12 +90,10 @@ async function createIssueHeader(facilityId, toFacilityId, issueDate, remarks, f
             issueId: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
         };
 
-        const result = await connection.execute(insertQuery, binds, { autoCommit: true });
+        const result = await db.execute(insertQuery, binds, { autoCommit: true });
         return result.outBinds.issueId[0];
-    } finally {
-        if (connection) {
-            try { await connection.close(); } catch (err) { console.error(err); }
-        }
+    } catch (err) {
+        throw err;
     }
 }
 
@@ -151,10 +158,55 @@ async function getItemsForIssue(nocId, issueId, facilityId) {
     return result.rows || [];
 }
 
+async function getBatches(facilityId, issueItemId, itemId) {
+    const query = `
+      SELECT
+          ri.FacReceiptItemID,
+          rb.BatchNo,
+          rb.MfgDate,
+          rb.ExpDate,
+          NVL(a.IssueQty,0) IssueQty,
+          rb.Inwno,
+          NVL(mr.locationno,'0') StockLocation
+      FROM tbfacilityoutwards a
+      INNER JOIN tbfacilityissueitems tbi
+          ON tbi.issueitemid = a.issueitemid
+      INNER JOIN tbfacilityissues tb
+          ON tb.issueid = tbi.issueid
+      INNER JOIN tbFacilityReceiptBatches rb
+          ON rb.inwno = a.inwno
+          AND rb.facreceiptitemid = a.facreceiptitemid
+          AND (rb.whissueblock IS NULL OR rb.whissueblock = 0)
+      LEFT JOIN masracks mr
+          ON mr.rackid = rb.StockLocation
+      INNER JOIN tbfacilityreceiptitems ri
+          ON ri.facreceiptitemid = rb.facreceiptitemid
+      WHERE tb.FacilityID = :facilityId
+      AND tbi.IssueItemID = :issueItemId
+      AND tbi.ItemID = :itemId
+      ORDER BY rb.expdate
+    `;
+
+    const result = await db.execute(
+      query,
+      {
+        facilityId,
+        issueItemId,
+        itemId,
+      },
+      {
+        outFormat: oracledb.OUT_FORMAT_OBJECT,
+      }
+    );
+
+    return result.rows || [];
+}
+
 module.exports = {
     getIndentHeader,
     getIssueHeader,
     createIssueHeader,
     updateIssueHeader,
-    getItemsForIssue
+    getItemsForIssue,
+    getBatches
 };

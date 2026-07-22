@@ -203,11 +203,27 @@ async function changePassword(req, res, next) {
   }
 }
 
+async function logout(req, res, next) {
+  try {
+    const userId = req.user.userId;
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    
+    logger.info(`Logout attempt for user: ${userId}`);
+    const result = await authService.logout(userId, ipAddress);
+    
+    return res.status(200).json(result);
+  } catch (error) {
+    logger.error('Logout error: ' + error.message);
+    next(error);
+  }
+}
+
 module.exports = {
   loginWithEmail,
   loginWithPhone,
   sendOTP,
   verifyOTP,
   refreshToken,
-  changePassword
+  changePassword,
+  logout
 };

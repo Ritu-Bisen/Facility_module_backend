@@ -21,4 +21,7 @@ router.post('/refresh', authController.refreshToken);
 // POST /api/auth/change-password - Change user password
 router.post('/change-password', authenticate, authController.changePassword);
 
+// POST /api/auth/logout - Logout user
+router.post('/logout', authenticate, authController.logout);
+
 module.exports = router;

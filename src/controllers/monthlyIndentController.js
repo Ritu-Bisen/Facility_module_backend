@@ -15,6 +15,26 @@ async function getPrograms(req, res) {
   }
 }
 
+async function getItemCategories(req, res) {
+  try {
+    const categories = await monthlyIndentModel.getItemCategories();
+    res.json(categories);
+  } catch (error) {
+    console.error('getItemCategories error:', error);
+    res.status(500).json({ error: 'Failed to fetch item categories' });
+  }
+}
+
+async function getItemTypes(req, res) {
+  try {
+    const types = await monthlyIndentModel.getItemTypes();
+    res.json(types);
+  } catch (error) {
+    console.error('getItemTypes error:', error);
+    res.status(500).json({ error: 'Failed to fetch item types' });
+  }
+}
+
 async function getNocList(req, res) {
   try {
     const facilityId = req.user.facilityId;
@@ -195,11 +215,11 @@ async function getNocItems(req, res) {
 async function getFmItems(req, res) {
   try {
     const facilityId = req.user.facilityId;
-    const { itemType } = req.query;
+    const { itemType, categoryId } = req.query;
     if (!itemType) {
       return res.status(400).json({ error: 'itemType query parameter is required' });
     }
-    const items = await monthlyIndentModel.getFmItemsForFacility(facilityId, itemType);
+    const items = await monthlyIndentModel.getFmItemsForFacility(facilityId, itemType, categoryId);
     res.json(items);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -217,9 +237,11 @@ async function saveNocItem(req, res) {
     // Check if it's a bulk save
     if (req.body.items && Array.isArray(req.body.items)) {
       const results = [];
+      const facilityId = req.user.facilityId;
       for (const item of req.body.items) {
         const nocItemId = await monthlyIndentModel.saveNocItem({
           nocId,
+          facilityId,
           itemId: item.itemId,
           requestedqty: item.requestedqty,
           whStock: item.whStock,
@@ -230,7 +252,13 @@ async function saveNocItem(req, res) {
           cgmsclRemarks: item.cgmsclRemarks,
           otherWhStock: item.otherWhStock,
           stockInHand: item.stockInHand,
-          itemType: item.itemType
+          itemType: item.itemType,
+          status: item.status,
+          approvedQty: item.approvedQty,
+          bookedQty: item.bookedQty,
+          bookedFlag: item.bookedFlag,
+          entry_date: item.entry_date,
+          cmhoapplieddttime: item.cmhoapplieddttime
         });
         results.push(nocItemId);
       }
@@ -241,17 +269,21 @@ async function saveNocItem(req, res) {
     const { 
       itemId, requestedqty, whStock, itemRemarks,
       whStockQcPending, estimatedDate, whId, cgmsclRemarks,
-      otherWhStock, stockInHand, itemType 
+      otherWhStock, stockInHand, itemType, status,
+      approvedQty, bookedQty, bookedFlag, entry_date, cmhoapplieddttime
     } = req.body;
+    
+    const facilityId = req.user.facilityId;
     
     if (!itemId) {
       return res.status(400).json({ error: 'itemId is required' });
     }
     
     const nocItemId = await monthlyIndentModel.saveNocItem({
-      nocId, itemId, requestedqty, whStock, itemRemarks,
+      nocId, facilityId, itemId, requestedqty, whStock, itemRemarks,
       whStockQcPending, estimatedDate, whId, cgmsclRemarks,
-      otherWhStock, stockInHand, itemType
+      otherWhStock, stockInHand, itemType, status,
+      approvedQty, bookedQty, bookedFlag, entry_date, cmhoapplieddttime
     });
     res.status(201).json({ message: 'Item saved successfully', nocItemId });
   } catch (error) {
@@ -314,7 +346,19 @@ async function deleteNocItem(req, res) {
   async function getDhsIndentItems(req, res) {
     try {
       const facilityId = req.user.facilityId;
-      const items = await monthlyIndentModel.getDhsIndentItemsForFacility(facilityId);
+      const { categoryId } = req.query;
+      const items = await monthlyIndentModel.getDhsIndentItemsForFacility(facilityId, categoryId);
+      res.json(items);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async function getAgainstApprovalIndentItems(req, res) {
+    try {
+      const facilityId = req.user.facilityId;
+      const { categoryId } = req.query;
+      const items = await monthlyIndentModel.getAgainstApprovalIndentItemsForFacility(facilityId, categoryId);
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -341,6 +385,8 @@ async function deleteNocItem(req, res) {
 
 module.exports = {
   getPrograms,
+  getItemCategories,
+  getItemTypes,
   getNocList,
   getIncompleteNoc,
   generateNocNumber,
@@ -357,5 +403,6 @@ module.exports = {
   getFmItems,
   getWarehouseItems,
   getDhsIndentItems,
+  getAgainstApprovalIndentItems,
   getOtherItem,
 };
