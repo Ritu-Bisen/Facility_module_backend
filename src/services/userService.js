@@ -4,6 +4,10 @@ async function getAllUsers() {
   return await userModel.findAll();
 }
 
+async function getTenUsers() {
+  return await userModel.findTenRows();
+}
+
 async function getUserById(id) {
   return await userModel.findById(id);
 }
@@ -42,5 +46,6 @@ module.exports = {
   getAllUsers,
   getUserById,
   getExtendedUserInfo,
-  getUserMenus
+  getUserMenus,
+  getTenUsers
 };

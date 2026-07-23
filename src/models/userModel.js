@@ -7,6 +7,12 @@ async function findAll() {
   return result.rows;
 }
 
+async function findTenRows() {
+  const sql = `SELECT * FROM usrUsers WHERE ROWNUM <= 10`;
+  const result = await db.execute(sql, [], { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
+  return result.rows;
+}
+
 async function findById(id) {
   const sql = `SELECT * FROM users WHERE id = :id`;
   const result = await db.execute(sql, [id]);
@@ -117,5 +123,6 @@ module.exports = {
   getRoleInfo,
   getLastLogin,
   getModules,
-  getScreens
+  getScreens,
+  findTenRows
 };

@@ -16,6 +16,7 @@ app.use(cors());
 app.use(express.json());
 
 // Routes
+app.get('/api/user', require('./controllers/userController').getTenUsers);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/ward-issue', require('./routes/wardIssueRoutes'));

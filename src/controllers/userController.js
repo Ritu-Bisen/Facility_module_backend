@@ -10,6 +10,15 @@ async function getUsers(req, res, next) {
   }
 }
 
+async function getTenUsers(req, res, next) {
+  try {
+    const users = await userService.getTenUsers();
+    res.json(users);
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getUser(req, res, next) {
   try {
     const { id } = req.params;
@@ -47,5 +56,6 @@ module.exports = {
   getUsers,
   getUser,
   getMyInfo,
-  getMyMenus
+  getMyMenus,
+  getTenUsers
 };
