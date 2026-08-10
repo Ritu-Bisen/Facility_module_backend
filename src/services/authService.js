@@ -3,12 +3,12 @@ const crypto = require('crypto');
 const logger = require('../utils/logger');
 const SaltedHash = require('../utils/saltedHash');
 const otpService = require('./otpService');
-const { generateTokens } = require('../utils/jwtHelper');
+const { generateTokens, generateTempMfaToken } = require('../utils/jwtHelper');
 
 /**
  * Build a JWT payload from a user row
  */
-function buildTokenPayload(user) {
+function buildTokenPayload(user, sessionId) {
   return {
     userId: user.USERID,
     emailId: user.EMAILID,
@@ -16,9 +16,12 @@ function buildTokenPayload(user) {
     lastName: user.LASTNAME,
     facilityId: user.FACILITYID,
     roleId: user.ROLEID,
-    roleName: user.ROLENAME
+    roleName: user.ROLENAME,
+    sessionId: sessionId
   };
 }
+
+const DUMMY_HASH = "salt{dummy}hash{dummy}";
 
 /**
  * Parse the legacy password format: salt{<salt>}hash{<hash>}
@@ -61,7 +64,8 @@ async function loginWithEmail(email, password) {
   const rows = await authModel.findByEmail(email);
 
   if (!rows || rows.length === 0) {
-    return { success: false, message: 'The email you entered is incorrect' };
+    verifyPassword(password, DUMMY_HASH); // Timing attack mitigation
+    return { success: false, message: 'Invalid credentials provided.' };
   }
 
   const user = rows[0];
@@ -77,12 +81,16 @@ async function loginWithEmail(email, password) {
   if (!isValid) {
     return {
       success: false,
-      message: 'The password you entered is incorrect'
+      message: 'Invalid credentials provided.'
     };
   }
 
+  // Generate a new session ID for concurrent login prevention
+  const sessionId = crypto.randomUUID();
+  await authModel.updateSessionId(user.USERID, sessionId);
+
   // Generate JWT tokens
-  const tokenPayload = buildTokenPayload(user);
+  const tokenPayload = buildTokenPayload(user, sessionId);
   const { accessToken, refreshToken } = generateTokens(tokenPayload);
 
   // Return user data with tokens
@@ -113,7 +121,8 @@ async function loginWithPhone(phoneNo, password) {
   const rows = await authModel.findByPhone(phoneNo);
 
   if (!rows || rows.length === 0) {
-    return { success: false, message: 'The phone number you entered is incorrect' };
+    verifyPassword(password, DUMMY_HASH); // Timing attack mitigation
+    return { success: false, message: 'Invalid credentials provided.' };
   }
 
   const user = rows[0];
@@ -129,12 +138,16 @@ async function loginWithPhone(phoneNo, password) {
   if (!isValid) {
     return {
       success: false,
-      message: 'The password you entered is incorrect'
+      message: 'Invalid credentials provided.'
     };
   }
 
+  // Generate a new session ID for concurrent login prevention
+  const sessionId = crypto.randomUUID();
+  await authModel.updateSessionId(user.USERID, sessionId);
+
   // Generate JWT tokens
-  const tokenPayload = buildTokenPayload(user);
+  const tokenPayload = buildTokenPayload(user, sessionId);
   const { accessToken, refreshToken } = generateTokens(tokenPayload);
 
   // Return user data with tokens
@@ -172,8 +185,7 @@ async function requestOTP(identifier, type) {
   }
 
   if (!rows || rows.length === 0) {
-    const msg = type === 'email' ? 'email' : 'phone number';
-    return { success: false, message: `The ${msg} you entered is incorrect` };
+    return { success: false, message: 'Invalid credentials provided.' };
   }
 
   const user = rows[0];
@@ -204,24 +216,14 @@ async function requestOTP(identifier, type) {
 }
 
 /**
- * Verify OTP and login
+ * Verify OTP and login (MFA Step 2)
  */
-async function verifyOTPAndLogin(identifier, type, otp) {
-  let rows;
-  if (type === 'email') {
-    rows = await authModel.findByEmail(identifier);
-  } else if (type === 'phone') {
-    rows = await authModel.findByPhone(identifier);
-  } else {
-    return { success: false, message: 'Invalid type' };
-  }
+async function verifyMfa(userId, otp) {
+  const user = await authModel.findFullUserById(userId);
 
-  if (!rows || rows.length === 0) {
-    const msg = type === 'email' ? 'email' : 'phone number';
-    return { success: false, message: `The ${msg} you entered is incorrect` };
+  if (!user) {
+    return { success: false, message: 'Invalid user.' };
   }
-
-  const user = rows[0];
 
   if (user.STATUS === 'I') {
     return { success: false, message: 'Member login restricted. Contact Administrator.' };
@@ -244,8 +246,12 @@ async function verifyOTPAndLogin(identifier, type, otp) {
   // Clear the OTP after successful verification to prevent reuse
   await authModel.updateOTP(user.USERID, null);
 
+  // Generate a new session ID for concurrent login prevention
+  const sessionId = crypto.randomUUID();
+  await authModel.updateSessionId(user.USERID, sessionId);
+
   // Generate JWT tokens
-  const tokenPayload = buildTokenPayload(user);
+  const tokenPayload = buildTokenPayload(user, sessionId);
   const { accessToken, refreshToken } = generateTokens(tokenPayload);
 
   // Return user data with tokens
@@ -286,12 +292,18 @@ async function changePassword(userId, oldPassword, newPassword) {
   const newHashedPassword = `salt{${sh.salt}}hash{${sh.hash}}`;
 
   await authModel.updatePassword(userId, newHashedPassword);
-  return { success: true, message: 'Password changed successfully' };
+  
+  // CWE-613: Invalidate all active sessions to force re-authentication
+  await authModel.updateSessionId(userId, null);
+  
+  return { success: true, message: 'Password changed successfully. You have been logged out of all devices.' };
 }
 
 async function logout(userId, ipAddress) {
   // 1 is the operation code for logout in the legacy system
   await authModel.insertAuditLog(userId, 1, ipAddress);
+  // Clear the session ID to log them out
+  await authModel.updateSessionId(userId, null);
   return { success: true, message: 'Logged out successfully' };
 }
 
@@ -299,7 +311,7 @@ module.exports = {
   loginWithEmail,
   loginWithPhone,
   requestOTP,
-  verifyOTPAndLogin,
+  verifyMfa,
   changePassword,
   logout
 };

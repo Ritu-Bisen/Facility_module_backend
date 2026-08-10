@@ -39,7 +39,19 @@ async function getNewModulesAndScreens() {
   `;
   try {
     const result = await db.execute(sql, [], { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
-    return result.rows || [];
+    if (result.rows && result.rows.length > 0) {
+      return result.rows;
+    }
+    // If no rows have ISNEW='Y', fallback to all modules
+    const fallbackSql = `
+      SELECT m.ModuleID, m.ModuleName, m.ModuleNo, 
+             s.ScreenID, s.ScreenName, s.ScreenURL, s.ScreenNo 
+      FROM usrModules m
+      JOIN usrScreens s ON s.ModuleID = m.ModuleID
+      ORDER BY m.ModuleNo, s.ScreenNo
+    `;
+    const fallbackRes = await db.execute(fallbackSql, [], { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
+    return fallbackRes.rows || [];
   } catch (err) {
     // Fallback if columns don't exist in dev DB (preventing crashes if ISNEW isn't actually there)
     console.error('Error fetching new modules/screens. Missing ISNEW column?', err.message);

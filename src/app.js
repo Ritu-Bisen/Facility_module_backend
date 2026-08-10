@@ -12,7 +12,56 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 
-app.use(cors());
+app.disable('x-powered-by');
+
+const helmet = require('helmet');
+
+// Implement Security Headers using Helmet
+app.use(
+  helmet({
+    // Set X-Frame-Options: DENY
+    frameguard: {
+      action: 'deny',
+    },
+    // Enforce nosniff explicitly (Helmet does this by default, but we declare it for CWE-693 compliance)
+    xContentTypeOptions: true,
+    // Enforce strict HSTS (CWE-693)
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true
+    },
+    // Set strict Content-Security-Policy
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "default-src": ["'self'"],
+        "script-src": ["'self'", "'unsafe-inline'"], // Note: Adjust if a nonce/hash strategy is used
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "img-src": ["'self'", "data:", "https:"],
+        "connect-src": ["'self'", "https://dpdmis.in", "http://localhost:5173"],
+        "frame-ancestors": ["'none'"],
+      },
+    },
+  })
+);
+const allowedOrigins = ['https://dpdmis.in', 'http://localhost:5173'];
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (e.g., server-to-server) or from allowed origins
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true, // Enable if cookies/authorization headers are needed
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Restrict to necessary methods
+  allowedHeaders: ['Content-Type', 'Authorization'] // Restrict to necessary headers
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Routes
@@ -46,8 +95,12 @@ app.use('/api/noc-approval', require('./routes/nocApprovalRoutes'));
 app.use('/api/stock-register', require('./routes/stockRegisterRoutes'));
 app.use('/api/annual-indent', require('./routes/annualIndentRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
+app.use('/api/local-purchase', require('./routes/localPurchaseRoutes'));
+app.use('/api/contracts', require('./routes/contractRoutes'));
 app.use('/api/roles', require('./routes/roleRoutes'));
 app.use('/api/facility-access', require('./routes/facilityAccessRoutes'));
+app.use('/api/local-items', require('./routes/localItemsRoutes'));
+app.use('/api/noc-cancellation', require('./routes/nocCancellationRoutes'));
 // Error Handling Middleware
 app.use(errorHandler);
 

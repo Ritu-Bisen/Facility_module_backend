@@ -12,6 +12,16 @@ async function getShortExpiryReport(facilityId, categoryId, itemId, monthFilter,
   return data;
 }
 
+async function getHoldBatchesReport(facilityId, itemTypeId) {
+  const data = await reportModel.getHoldBatchesReport(
+    facilityId, 
+    itemTypeId || '0'
+  );
+  
+  return data;
+}
+
 module.exports = {
-  getShortExpiryReport
+  getShortExpiryReport,
+  getHoldBatchesReport
 };

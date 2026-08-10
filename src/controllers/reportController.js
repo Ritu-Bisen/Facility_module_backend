@@ -21,6 +21,24 @@ async function getShortExpiryReport(req, res, next) {
   }
 }
 
+async function getHoldBatches(req, res, next) {
+  try {
+    const facilityId = req.user.facilityId;
+    const { itemTypeId } = req.query;
+    
+    const data = await reportService.getHoldBatchesReport(
+      facilityId, 
+      itemTypeId
+    );
+    
+    res.json({ success: true, data });
+  } catch (error) {
+    logger.error('Error in getHoldBatches: ' + error.message);
+    next(error);
+  }
+}
+
 module.exports = {
-  getShortExpiryReport
+  getShortExpiryReport,
+  getHoldBatches
 };

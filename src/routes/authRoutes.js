@@ -2,18 +2,20 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const { authenticate } = require('../middleware/authMiddleware');
+const { loginRateLimiter, otpRateLimiter } = require('../middleware/rateLimitMiddleware');
+const { noCache } = require('../middleware/cacheMiddleware');
 
-// POST /api/auth/login/email - Login with email and password
-router.post('/login/email', authController.loginWithEmail);
+// Apply no-cache headers to all auth endpoints
+router.use(noCache);
 
-// POST /api/auth/login/phone - Login with phone number and password
-router.post('/login/phone', authController.loginWithPhone);
+// POST /api/auth/login/email - Step 1: Login with email and password
+router.post('/login/email', loginRateLimiter, authController.loginWithEmail);
 
-// POST /api/auth/otp/send - Send OTP via SMS or Email
-router.post('/otp/send', authController.sendOTP);
+// POST /api/auth/login/phone - Step 1: Login with phone number and password
+router.post('/login/phone', loginRateLimiter, authController.loginWithPhone);
 
-// POST /api/auth/otp/verify - Verify OTP and Login
-router.post('/otp/verify', authController.verifyOTP);
+// POST /api/auth/login/mfa - Step 2: Verify MFA OTP and Login (CWE-308)
+router.post('/login/mfa', loginRateLimiter, authController.verifyMfa);
 
 // POST /api/auth/refresh - Refresh access token
 router.post('/refresh', authController.refreshToken);

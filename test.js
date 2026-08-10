@@ -1,0 +1,1 @@
+const db = require('./src/config/db'); db.execute(\SELECT column_name FROM user_tab_columns WHERE table_name = 'TBFACILITYRECEIPTBATCHES'\).then(r => console.log(r.rows)).catch(console.error).finally(() => process.exit())

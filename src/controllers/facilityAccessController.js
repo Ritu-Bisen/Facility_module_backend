@@ -68,6 +68,7 @@ async function getMyMenus(req, res, next) {
     }
 
     const facilityId = req.user.facilityId;
+    const userId = req.user.userId;
     let facilityType = 'PHC'; // Fallback default
     
     if (facilityId) {
@@ -86,6 +87,44 @@ async function getMyMenus(req, res, next) {
     
     // Get permissions tree for this facility type
     const tree = await facilityAccessService.getPermissionsByFacility(facilityType);
+    
+    // Get role-based permissions for this user
+    const userService = require('../services/userService');
+    const roleMenus = await userService.getUserMenus(userId);
+    
+    // Map role screens for fast lookup
+    const roleScreenMap = {};
+    roleMenus.forEach(mod => {
+      mod.screens.forEach(s => {
+        roleScreenMap[s.SCREENID || s.screenid] = true;
+      });
+    });
+
+    // Check if USRFACILITYSCREENS actually has ANY rules for this facilityType
+    let hasFacilityPermissions = false;
+    tree.forEach(module => {
+      module.screens.forEach(screen => {
+        if (screen.canView) hasFacilityPermissions = true;
+      });
+    });
+
+    // If NO facility permissions exist (unconfigured), fallback to ONLY Role permissions
+    tree.forEach(module => {
+      module.screens.forEach(screen => {
+        if (!hasFacilityPermissions) {
+           // Fallback to Role only
+           if (roleScreenMap[screen.screenId]) {
+               screen.canView = true;
+               screen.canAdd = true;
+               screen.canEdit = true;
+               screen.canDelete = true;
+               screen.canApprove = true;
+           }
+        }
+        // If hasFacilityPermissions is true, we simply keep the permissions from USRFACILITYSCREENS
+        // and do not intersect with roleScreenMap, so it strictly follows facility type.
+      });
+    });
     
     res.json({ success: true, menus: tree, facilityType });
   } catch (err) {

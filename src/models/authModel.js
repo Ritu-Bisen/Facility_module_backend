@@ -55,6 +55,19 @@ async function findUserById(userId) {
   return result.rows[0];
 }
 
+async function findFullUserById(userId) {
+  const sql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
+                      u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
+                      f.FOOTER1, f.FOOTER2, f.FOOTER3,
+                      r.ROLENAME
+               FROM USRUSERS u
+               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = u.USERID
+               LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
+               WHERE u.USERID = :userId`;
+  const result = await db.execute(sql, { userId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+  return result.rows[0];
+}
+
 async function updatePassword(userId, newHashedPassword) {
   const sql = `UPDATE USRUSERS SET PWD = :newHashedPassword WHERE USERID = :userId`;
   await db.execute(sql, { newHashedPassword, userId }, { autoCommit: true });
@@ -68,11 +81,18 @@ async function insertAuditLog(userId, operation, ipAddress) {
   await db.execute(sql, { userId, operation, ipAddress: ipAddress || '0.0.0.0' }, { autoCommit: true });
 }
 
+async function updateSessionId(userId, sessionId) {
+  // Session ID feature is disabled as the column is not in the database
+  return Promise.resolve();
+}
+
 module.exports = {
   findByEmail,
   findByPhone,
   updateOTP,
   findUserById,
+  findFullUserById,
   updatePassword,
-  insertAuditLog
+  insertAuditLog,
+  updateSessionId
 };

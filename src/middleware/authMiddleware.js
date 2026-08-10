@@ -1,11 +1,12 @@
 const { verifyAccessToken } = require('../utils/jwtHelper');
 const logger = require('../utils/logger');
+const authModel = require('../models/authModel');
 
 /**
  * Middleware to authenticate requests using JWT.
  * Expects header: Authorization: Bearer <token>
  */
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -16,6 +17,13 @@ function authenticate(req, res, next) {
 
   try {
     const decoded = verifyAccessToken(token);
+    
+    // Enforce Single Session (CWE-287)
+    const user = await authModel.findUserById(decoded.userId);
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'User not found.' });
+    }
+
     req.user = decoded;
     next();
   } catch (error) {

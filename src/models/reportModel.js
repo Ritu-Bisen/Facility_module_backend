@@ -57,6 +57,87 @@ async function getShortExpiryReport(facilityId, categoryId, itemId, monthFilter,
   return result.rows;
 }
 
+async function getHoldBatchesReport(facilityId, itemTypeId) {
+  let whereClause = '';
+  const binds = { facilityId };
+
+  if (itemTypeId && itemTypeId !== '0') {
+    whereClause = 'and mt.itemtypeid = :itemTypeId';
+    binds.itemTypeId = itemTypeId;
+  }
+
+  const sql = `
+    select 
+      A.batchno as "batchNo",
+      to_char(A.expdate,'dd-mm-yy') as "expDate",
+      A.itemcode as "itemCode",
+      A.ItemName || '-' || A.strength1 as "itemName", 
+      A.SKU as "sku",
+      (case when sum(A.ReadyForIssue) > 0 then sum(A.ReadyForIssue) else 0 end) as "readyForIssue",
+      (case when sum(nvl(A.Pending,0)) > 0 then sum(nvl(A.Pending,0)) else 0 end) as "pending",
+      facilityname as "facilityName",
+      mc.CategoryName as "categoryName",
+      mc.CategoryID as "categoryId",
+      mt.itemtypename as "itemTypeName",
+      whissueblock as "holdStatus"
+    from (
+      select 
+        b.batchno,
+        b.expdate,
+        f.facilityname,
+        mi.ITEMCODE, 
+        b.inwno,
+        mi.ITEMNAME, 
+        mi.strength1,
+        mi.unit as SKU,
+        t.facilityid, 
+        mi.itemid,
+        (nvl(b.absrqty,0) - nvl(iq.issueqty,0) ) as ReadyForIssue,
+        (case when b.qastatus = 0 or b.qastatus = 3 then (nvl(b.absrqty,0)- nvl(iq.issueqty,0)) end) Pending,
+        case when b.whissueblock=1 then 'Hold' else 'Unhold' end whissueblock   
+      from tbfacilityreceiptbatches b   
+      inner join tbfacilityreceiptitems i on b.facreceiptitemid=i.facreceiptitemid 
+      inner join tbfacilityreceipts t on t.facreceiptid=i.facreceiptid  
+      inner join vmasitems mi on mi.itemid=i.itemid 
+      inner join masfacilities f on f.facilityid=t.facilityid 
+      left outer join (  
+        select fs.facilityid, fsi.itemid, ftbo.inwno, sum(nvl(ftbo.issueqty,0)) issueqty   
+        from tbfacilityissues fs 
+        inner join tbfacilityissueitems fsi on fsi.issueid=fs.issueid 
+        inner join tbfacilityoutwards ftbo on ftbo.issueitemid=fsi.issueitemid 
+        where fs.status = 'C'                 
+        group by fsi.itemid,fs.facilityid,ftbo.inwno                     
+      ) iq on b.inwno = iq.inwno and iq.itemid=i.itemid and iq.facilityid=t.facilityid                 
+      Where T.Status = 'C' And (b.Whissueblock = 1 OR b.QAstatus = 2) and b.expdate > sysdate 
+      and t.facilityid = :facilityId
+    ) A 
+    inner join vmasitems mia on mia.itemid=A.itemid  
+    left outer join masitemtypes mt on mt.itemtypeid=mia.itemtypeid  
+    inner join masitemcategories mc on mc.CategoryID=mia.CategoryID  
+    where A.facilityid = :facilityId ${whereClause}
+    group by whissueblock, mt.itemtypename, facilityname, A.itemcode, A.ItemName, A.strength1, A.SKU, mc.CategoryID, mc.CategoryName, A.batchno, A.expdate  
+    having sum(nvl(A.ReadyForIssue,0)) > 0 or sum(nvl(A.Pending,0)) > 0 
+    order by A.itemcode 
+  `;
+
+  const result = await db.execute(sql, binds, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
+  
+  return result.rows.map((r, index) => ({
+    slNo: index + 1,
+    facilityName: r.facilityName || r.FACILITYNAME,
+    drugCode: r.itemCode || r.ITEMCODE,
+    drugName: r.itemName || r.ITEMNAME,
+    unit: r.sku || r.SKU,
+    itemType: r.itemTypeName || r.ITEMTYPENAME || 'OTHER',
+    availableStock: r.readyForIssue !== undefined ? r.readyForIssue : r.READYFORISSUE,
+    batchNo: r.batchNo || r.BATCHNO,
+    expiryDate: r.expDate || r.EXPDATE,
+    categoryName: r.categoryName || r.CATEGORYNAME,
+    holdStatus: r.holdStatus || r.HOLDSTATUS
+  }));
+}
+
 module.exports = {
-  getShortExpiryReport
+  getShortExpiryReport,
+  getHoldBatchesReport
 };

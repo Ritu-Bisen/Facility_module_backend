@@ -1,9 +1,16 @@
 const logger = require('../utils/logger');
 
 function errorHandler(err, req, res, next) {
-  logger.error(err.message || 'Internal Server Error');
-  res.status(err.status || 500).json({
-    message: err.message || 'Internal Server Error',
+  // Log the full stack trace securely on the server
+  logger.error(`[Error] ${err.message}\nStack: ${err.stack}`);
+  
+  // Return a generic error message for 500s to prevent info leakage (CWE-209)
+  const status = err.status || 500;
+  const message = status === 500 ? 'An unexpected error occurred. Please try again later.' : err.message;
+
+  res.status(status).json({
+    success: false,
+    message: message,
   });
 }
 

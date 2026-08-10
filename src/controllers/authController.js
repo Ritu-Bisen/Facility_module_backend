@@ -1,6 +1,6 @@
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
-const { verifyRefreshToken, generateTokens } = require('../utils/jwtHelper');
+const { verifyRefreshToken, generateTokens, verifyTempMfaToken } = require('../utils/jwtHelper');
 
 /**
  * POST /api/auth/login/email
@@ -102,29 +102,41 @@ async function sendOTP(req, res, next) {
 }
 
 /**
- * POST /api/auth/otp/verify
- * Verify OTP and Login
- * Body: { type: 'email' | 'phone', identifier: 'chctilda@dpdmis.in' | '9876543210', otp: '123456' }
+ * POST /api/auth/login/mfa
+ * Verify OTP using the temporary MFA token
+ * Body: { tempToken: 'eyJ...', otp: '123456' }
  */
-async function verifyOTP(req, res, next) {
+async function verifyMfa(req, res, next) {
   try {
-    const { type, identifier, otp } = req.body;
+    const { tempToken, otp } = req.body;
     
-    if (!type || !identifier || !otp) {
-      return res.status(400).json({ success: false, message: 'Type, identifier, and otp are required' });
+    if (!tempToken || !otp) {
+      return res.status(400).json({ success: false, message: 'tempToken and otp are required' });
     }
 
-    logger.info(`Verifying OTP for ${type}: ${identifier}`);
-    const result = await authService.verifyOTPAndLogin(identifier, type, otp);
+    let decoded;
+    try {
+      decoded = verifyTempMfaToken(tempToken);
+    } catch (error) {
+      logger.error('MFA Temp Token verification failed: ' + error.message);
+      return res.status(401).json({ success: false, message: 'MFA session expired or invalid. Please login again.' });
+    }
+
+    if (!decoded.mfaRequired || !decoded.userId) {
+      return res.status(400).json({ success: false, message: 'Invalid token payload for MFA.' });
+    }
+
+    logger.info(`Verifying MFA OTP for user: ${decoded.userId}`);
+    const result = await authService.verifyMfa(decoded.userId, otp);
 
     if (!result.success) {
       return res.status(401).json(result); // Unauthorized if wrong OTP
     }
     
-    logger.info(`OTP Login successful for ${type}: ${identifier}`);
+    logger.info(`MFA Login successful for user: ${decoded.userId}`);
     return res.status(200).json(result);
   } catch (error) {
-    logger.error('Verify OTP error: ' + error.message);
+    logger.error('Verify MFA error: ' + error.message);
     next(error);
   }
 }
@@ -179,6 +191,8 @@ async function refreshToken(req, res, next) {
   }
 }
 
+const WEAK_PASSWORDS = ['password123', 'admin123', '12345678', 'qwerty12', 'password'];
+
 async function changePassword(req, res, next) {
   try {
     const userId = req.user.userId;
@@ -186,6 +200,22 @@ async function changePassword(req, res, next) {
 
     if (!oldPassword || !newPassword) {
       return res.status(400).json({ success: false, message: 'Old password and new password are required' });
+    }
+
+    if (oldPassword === newPassword) {
+      return res.status(400).json({ success: false, message: 'New password cannot be the same as the old password' });
+    }
+
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(newPassword)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Password must be at least 8 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character.' 
+      });
+    }
+
+    if (WEAK_PASSWORDS.includes(newPassword.toLowerCase())) {
+      return res.status(400).json({ success: false, message: 'Password is too weak or common. Please choose a stronger password.' });
     }
 
     logger.info(`Password change attempt for user: ${userId}`);
@@ -222,7 +252,7 @@ module.exports = {
   loginWithEmail,
   loginWithPhone,
   sendOTP,
-  verifyOTP,
+  verifyMfa,
   refreshToken,
   changePassword,
   logout
