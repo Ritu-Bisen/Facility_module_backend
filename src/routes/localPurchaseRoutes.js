@@ -19,10 +19,17 @@ router.get('/supply-orders', authenticate, localPurchaseController.getSupplyOrde
 router.get('/supply-orders/auto-number', authenticate, localPurchaseController.generateSupplyOrderNo);
 router.post('/supply-orders', authenticate, localPurchaseController.saveSupplyOrderHeader);
 router.get('/supply-orders/:id/pdf-details', authenticate, localPurchaseController.getSupplyOrderDetails);
+router.get('/supply-orders/edit-details/:poNoId', authenticate, localPurchaseController.getSupplyOrderEditDetails);
 router.get('/supply-orders/:poNoId', authenticate, localPurchaseController.getSupplyOrderDetails);
 router.get('/supply-orders/:id/items', authenticate, localPurchaseController.getSupplyOrderItems);
 router.post('/supply-orders/:id/items', authenticate, localPurchaseController.addSupplyOrderItem);
+router.put('/supply-orders/:id/items/:itemId', authenticate, localPurchaseController.updateSupplyOrderItem);
 router.delete('/supply-orders/:id/items/:itemId', authenticate, localPurchaseController.deleteSupplyOrderItem);
+router.post('/supply-orders/:poNoId/complete', authenticate, localPurchaseController.completeSupplyOrder);
+router.delete('/supply-orders/:poNoId', authenticate, localPurchaseController.deleteSupplyOrder);
+router.post('/supply-orders/:poNoId/amend', authenticate, localPurchaseController.amendSupplyOrder);
+router.get('/noc-details', authenticate, localPurchaseController.getNocDetails);
+router.get('/noc-balance', authenticate, localPurchaseController.getNocBalance);
 
 // Receipts from Supplier
 router.get('/supplier-receipts', authenticate, localPurchaseController.getSupplierReceipts);

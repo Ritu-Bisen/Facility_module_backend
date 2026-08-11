@@ -1,18 +1,18 @@
-require('dotenv').config({ path: './.env' });
+require('dotenv').config();
 const db = require('./src/config/db');
 
 async function test() {
-  await db.initialize();
   try {
-    await db.execute(`UPDATE usrScreens SET ISSUBNEW = 'Y' WHERE ScreenID IN (3163, 3465, 3466)`);
-    await db.execute(`UPDATE usrModules SET ISNEW = 'Y' WHERE ModuleID IN (5, 6, 61)`);
-    await db.execute(`COMMIT`);
-    console.log("Updated DB");
+    await db.initialize();
+    
+    const sql = `SELECT column_name FROM user_tab_columns WHERE table_name = 'LPMASITEMS'`;
+    const res = await db.execute(sql, {}, { outFormat: 4002 });
+    console.log(res.rows.map(r => r.COLUMN_NAME || r.column_name));
+    
   } catch (err) {
-    console.error(err);
+    console.error('ERROR:', err.message);
   } finally {
-    await db.close();
+    process.exit(0);
   }
 }
-
 test();

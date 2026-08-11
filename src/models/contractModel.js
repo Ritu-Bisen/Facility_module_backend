@@ -113,7 +113,6 @@ async function getLocalItems(finYearId) {
       ON c.CATEGORYID = i.CATEGORYID
     INNER JOIN MASITEMMAINCATEGORY mc
       ON mc.MCID = c.MCID
-    WHERE i.ISLP = 'LP'
     ORDER BY mc.MCATEGORY, i.ITEMNAME
   `;
   const result = await db.execute(sql, {}, { outFormat: 4002, fetchArraySize: 10000 });
@@ -287,23 +286,28 @@ async function updateContract(contractId, facilityId, data) {
 async function getContractItems(contractId) {
   const sql = `
     SELECT 
-      CONTRACTITEMID as "id",
-      ITEMID as "itemId",
-      LPITEMID as "lpItemId",
-      SINGLEUNITPRICE as "unitPrice",
-      CONTRACTABSQTY as "qty",
-      ITEMVALUE as "itemValue",
-      MANUFACTURER as "manufacturer",
-      PERCENTVALUEGST as "gst",
-      BASICRATE as "basicRate"
-    FROM LPContractItems
-    WHERE ContractID = :contractId
+      c.CONTRACTITEMID as "id",
+      c.ITEMID as "itemId",
+      c.LPITEMID as "lpItemId",
+      m.ITEMCODE as "itemCode",
+      m.ITEMNAME as "itemName",
+      c.SINGLEUNITPRICE as "unitPrice",
+      c.CONTRACTABSQTY as "qty",
+      c.ITEMVALUE as "itemValue",
+      c.MANUFACTURER as "manufacturer",
+      c.PERCENTVALUEGST as "gst",
+      c.BASICRATE as "basicRate"
+    FROM LPContractItems c
+    LEFT JOIN VMASITEMS m ON c.LPITEMID = m.ITEMID
+    WHERE c.ContractID = :contractId
   `;
   const result = await db.execute(sql, { contractId: parseInt(contractId, 10) }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
   return result.rows.map(r => ({
     id: r.id || r.ID,
     itemId: r.itemId || r.ITEMID,
     lpItemId: r.lpItemId || r.LPITEMID,
+    itemCode: r.itemCode || r.ITEMCODE,
+    itemName: r.itemName || r.ITEMNAME,
     unitPrice: r.unitPrice || r.SINGLEUNITPRICE,
     qty: r.qty || r.CONTRACTABSQTY,
     itemValue: r.itemValue || r.ITEMVALUE,

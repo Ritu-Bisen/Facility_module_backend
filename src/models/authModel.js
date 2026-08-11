@@ -8,6 +8,7 @@ const oracledb = require('oracledb');
 async function findByEmail(email) {
   const sql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
                       u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
+                      u.FAILED_ATTEMPTS, u.LOCKOUT_UNTIL,
                       f.FOOTER1, f.FOOTER2, f.FOOTER3,
                       r.ROLENAME
                FROM USRUSERS u
@@ -26,6 +27,7 @@ async function findByEmail(email) {
 async function findByPhone(phoneNo) {
   const sql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
                       u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
+                      u.FAILED_ATTEMPTS, u.LOCKOUT_UNTIL,
                       f.FOOTER1, f.FOOTER2, f.FOOTER3,
                       r.ROLENAME
                FROM USRUSERS u
@@ -82,8 +84,29 @@ async function insertAuditLog(userId, operation, ipAddress) {
 }
 
 async function updateSessionId(userId, sessionId) {
-  // Session ID feature is disabled as the column is not in the database
-  return Promise.resolve();
+  const sql = `UPDATE USRUSERS SET SESSION_ID = :sessionId WHERE USERID = :userId`;
+  await db.execute(sql, { sessionId, userId }, { autoCommit: true });
+}
+
+async function incrementFailedAttempts(userId) {
+  const sql = `UPDATE USRUSERS SET FAILED_ATTEMPTS = NVL(FAILED_ATTEMPTS, 0) + 1 WHERE USERID = :userId`;
+  await db.execute(sql, { userId }, { autoCommit: true });
+}
+
+async function lockAccount(userId, lockoutMinutes) {
+  const sql = `UPDATE USRUSERS SET LOCKOUT_UNTIL = SYSDATE + (:lockoutMinutes / 1440) WHERE USERID = :userId`;
+  await db.execute(sql, { lockoutMinutes, userId }, { autoCommit: true });
+}
+
+async function resetFailedAttempts(userId) {
+  const sql = `UPDATE USRUSERS SET FAILED_ATTEMPTS = 0, LOCKOUT_UNTIL = NULL WHERE USERID = :userId`;
+  await db.execute(sql, { userId }, { autoCommit: true });
+}
+
+async function getSessionId(userId) {
+  const sql = `SELECT SESSION_ID FROM USRUSERS WHERE USERID = :userId`;
+  const result = await db.execute(sql, { userId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+  return result.rows.length > 0 ? result.rows[0].SESSION_ID : null;
 }
 
 module.exports = {
@@ -94,5 +117,9 @@ module.exports = {
   findFullUserById,
   updatePassword,
   insertAuditLog,
-  updateSessionId
+  updateSessionId,
+  getSessionId,
+  incrementFailedAttempts,
+  lockAccount,
+  resetFailedAttempts
 };

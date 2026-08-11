@@ -75,14 +75,29 @@ async function loginWithEmail(email, password) {
     return { success: false, message: 'Member login restricted. Contact Administrator.' };
   }
 
+  // Check lockout status
+  if (user.LOCKOUT_UNTIL && new Date(user.LOCKOUT_UNTIL) > new Date()) {
+    return { success: false, message: 'Account is temporarily locked due to too many failed attempts. Please try again later.' };
+  }
+
   // Verify password
   const isValid = verifyPassword(password, user.PWD);
 
   if (!isValid) {
+    await authModel.incrementFailedAttempts(user.USERID);
+    if ((user.FAILED_ATTEMPTS || 0) + 1 >= 5) {
+      await authModel.lockAccount(user.USERID, 15); // lock for 15 minutes
+      return { success: false, message: 'Account locked due to 5 consecutive failed login attempts. Please try again after 15 minutes.' };
+    }
     return {
       success: false,
       message: 'Invalid credentials provided.'
     };
+  }
+
+  // Reset failed attempts upon successful login
+  if (user.FAILED_ATTEMPTS > 0) {
+    await authModel.resetFailedAttempts(user.USERID);
   }
 
   // Generate a new session ID for concurrent login prevention
@@ -132,14 +147,29 @@ async function loginWithPhone(phoneNo, password) {
     return { success: false, message: 'Member login restricted. Contact Administrator.' };
   }
 
+  // Check lockout status
+  if (user.LOCKOUT_UNTIL && new Date(user.LOCKOUT_UNTIL) > new Date()) {
+    return { success: false, message: 'Account is temporarily locked due to too many failed attempts. Please try again later.' };
+  }
+
   // Verify password
   const isValid = verifyPassword(password, user.PWD);
 
   if (!isValid) {
+    await authModel.incrementFailedAttempts(user.USERID);
+    if ((user.FAILED_ATTEMPTS || 0) + 1 >= 5) {
+      await authModel.lockAccount(user.USERID, 15); // lock for 15 minutes
+      return { success: false, message: 'Account locked due to 5 consecutive failed login attempts. Please try again after 15 minutes.' };
+    }
     return {
       success: false,
       message: 'Invalid credentials provided.'
     };
+  }
+
+  // Reset failed attempts upon successful login
+  if (user.FAILED_ATTEMPTS > 0) {
+    await authModel.resetFailedAttempts(user.USERID);
   }
 
   // Generate a new session ID for concurrent login prevention

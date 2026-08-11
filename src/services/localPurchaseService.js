@@ -62,12 +62,20 @@ async function getSupplyOrderDetails(poNoId) {
   return await localPurchaseModel.getSupplyOrderDetails(poNoId);
 }
 
+async function getSupplyOrderEditDetails(poNoId) {
+  return await localPurchaseModel.getSupplyOrderEditDetails(poNoId);
+}
+
 async function getSupplyOrderItems(poNoId) {
   return await localPurchaseModel.getSupplyOrderItems(poNoId);
 }
 
-async function addSupplyOrderItem(poNoId, itemData) {
-  return await localPurchaseModel.addSupplyOrderItem(poNoId, itemData);
+async function addSupplyOrderItem(poNoId, data) {
+  return await localPurchaseModel.addSupplyOrderItem(poNoId, data);
+}
+
+async function updateSupplyOrderItem(orderItemId, poNoId, data) {
+  return await localPurchaseModel.updateSupplyOrderItem(orderItemId, poNoId, data);
 }
 
 async function deleteSupplyOrderItem(orderItemId, poNoId) {
@@ -143,6 +151,31 @@ async function completeReceipt(receiptId, facilityId) {
   return await localPurchaseModel.completeReceipt(receiptId, facilityId);
 }
 
+async function completeSupplyOrder(poNoId, dispatchNo, dispatchDate) {
+  if (!poNoId) throw new Error('PO ID is required');
+  return await localPurchaseModel.completeSupplyOrder(poNoId, dispatchNo, dispatchDate);
+}
+
+async function deleteSupplyOrder(poNoId) {
+  if (!poNoId) throw new Error('PO ID is required');
+  return await localPurchaseModel.deleteSupplyOrder(poNoId);
+}
+
+async function amendSupplyOrder(poNoId) {
+  if (!poNoId) throw new Error('PO ID is required');
+  return await localPurchaseModel.amendSupplyOrder(poNoId);
+}
+
+async function getNocDetails(facilityId, itemId) {
+  if (!facilityId || !itemId) throw new Error('Facility ID and Item ID are required');
+  return await localPurchaseModel.getNocDetails(facilityId, itemId);
+}
+
+async function getNocBalance(nocId, itemId) {
+  if (!nocId || !itemId) throw new Error('NOC ID and Item ID are required');
+  return await localPurchaseModel.getNocBalance(nocId, itemId);
+}
+
 module.exports = {
   getBudgets,
   getBudgetDetails,
@@ -154,8 +187,10 @@ module.exports = {
   deleteSupplier,
   getSupplyOrders,
   getSupplyOrderDetails,
+  getSupplyOrderEditDetails,
   getSupplyOrderItems,
   addSupplyOrderItem,
+  updateSupplyOrderItem,
   deleteSupplyOrderItem,
   generateSupplyOrderNo,
   saveSupplyOrderHeader,
@@ -167,5 +202,10 @@ module.exports = {
   getReceiptBatches,
   saveReceiptBatch,
   deleteReceiptBatch,
-  completeReceipt
+  completeReceipt,
+  completeSupplyOrder,
+  deleteSupplyOrder,
+  amendSupplyOrder,
+  getNocDetails,
+  getNocBalance
 };

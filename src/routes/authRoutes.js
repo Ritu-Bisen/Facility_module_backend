@@ -4,9 +4,13 @@ const authController = require('../controllers/authController');
 const { authenticate } = require('../middleware/authMiddleware');
 const { loginRateLimiter, otpRateLimiter } = require('../middleware/rateLimitMiddleware');
 const { noCache } = require('../middleware/cacheMiddleware');
+const captchaRoutes = require('./captchaRoutes');
 
 // Apply no-cache headers to all auth endpoints
 router.use(noCache);
+
+// CAPTCHA endpoint
+router.use('/captcha', captchaRoutes);
 
 // POST /api/auth/login/email - Step 1: Login with email and password
 router.post('/login/email', loginRateLimiter, authController.loginWithEmail);

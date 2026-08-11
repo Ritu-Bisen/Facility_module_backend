@@ -101,6 +101,7 @@ app.use('/api/roles', require('./routes/roleRoutes'));
 app.use('/api/facility-access', require('./routes/facilityAccessRoutes'));
 app.use('/api/local-items', require('./routes/localItemsRoutes'));
 app.use('/api/noc-cancellation', require('./routes/nocCancellationRoutes'));
+app.use('/api/return-to-warehouse', require('./routes/returnToWarehouseRoutes'));
 // Error Handling Middleware
 app.use(errorHandler);
 

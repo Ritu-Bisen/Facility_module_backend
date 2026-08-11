@@ -1,6 +1,7 @@
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
 const { verifyRefreshToken, generateTokens, verifyTempMfaToken } = require('../utils/jwtHelper');
+const { verifyCaptcha } = require('./captchaController');
 
 /**
  * POST /api/auth/login/email
@@ -9,7 +10,15 @@ const { verifyRefreshToken, generateTokens, verifyTempMfaToken } = require('../u
  */
 async function loginWithEmail(req, res, next) {
   try {
-    const { email, password } = req.body;
+    const { email, password, captchaValue, captchaToken } = req.body;
+
+    if (!captchaValue || !captchaToken) {
+      return res.status(400).json({ success: false, message: 'CAPTCHA is required' });
+    }
+
+    if (!verifyCaptcha(captchaToken, captchaValue)) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired CAPTCHA' });
+    }
 
     if (!email && !password) {
       return res.status(400).json({ success: false, message: 'Email and password are required' });
@@ -43,7 +52,15 @@ async function loginWithEmail(req, res, next) {
  */
 async function loginWithPhone(req, res, next) {
   try {
-    const { phoneNo, password } = req.body;
+    const { phoneNo, password, captchaValue, captchaToken } = req.body;
+
+    if (!captchaValue || !captchaToken) {
+      return res.status(400).json({ success: false, message: 'CAPTCHA is required' });
+    }
+
+    if (!verifyCaptcha(captchaToken, captchaValue)) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired CAPTCHA' });
+    }
 
     if (!phoneNo && !password) {
       return res.status(400).json({ success: false, message: 'Phone number and password are required' });

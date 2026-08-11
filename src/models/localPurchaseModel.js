@@ -268,10 +268,15 @@ async function getSupplyOrderDetails(poNoId) {
       m2.SupplierName as "lpSupplierName",
       m2.Address as "lpAddress",
       m2.City as "lpCity",
-      m2.Phone1 as "lpPhone"
+      m2.Phone1 as "lpPhone",
+      b.ShAccYear as "shAccYear",
+      c.Contractno as "contractNo",
+      (SELECT COUNT(PoNoID) FROM LPSoordereditems c2 WHERE c2.PoNoID = a.PoNoID) as "itemCnt"
     FROM LPsoOrderPlaced a
     LEFT JOIN MasSuppliers m1 ON a.SupplierID = m1.SupplierID
     LEFT JOIN LPMasSuppliers m2 ON a.LPSupplierID = m2.LPSupplierID
+    INNER JOIN masAccYearSettings b ON a.AccYrSetID = b.AccYrSetID
+    LEFT OUTER JOIN lpcontracts c ON c.contractid = a.contractid
     WHERE a.PoNoID = :poNoId
   `;
   const headerResult = await db.execute(headerSql, { poNoId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
@@ -293,7 +298,10 @@ async function getSupplyOrderDetails(poNoId) {
     lpSupplierName: header.lpSupplierName || header.LPSUPPLIERNAME,
     lpAddress: header.lpAddress || header.LPADDRESS,
     lpCity: header.lpCity || header.LPCITY,
-    lpPhone: header.lpPhone || header.LPPHONE
+    lpPhone: header.lpPhone || header.LPPHONE,
+    shAccYear: header.shAccYear || header.SHACCYEAR,
+    contractNo: header.contractNo || header.CONTRACTNO,
+    itemCnt: header.itemCnt || header.ITEMCNT
   };
 
   // Resolve final supplier name and address (prefer LP over main for this module)
@@ -308,6 +316,85 @@ async function getSupplyOrderDetails(poNoId) {
   return { header: h, items };
 }
 
+async function getSupplyOrderEditDetails(poNoId) {
+  const sql = `
+    SELECT a.PoNoID,
+           a.AccYrSetID,
+           a.LPSupplierID,
+           c.Contractid as contrid,
+           c.Contractno,
+           a.PoNo,
+           a.PoDate,
+           a.CategoryID,
+           a.SOValue,
+           (
+             SELECT COUNT(PoNoID)
+             FROM LPSoordereditems c
+             WHERE c.PoNoID = a.PoNoID
+           ) AS ItemCnt
+    FROM LPsoOrderPlaced a
+    LEFT OUTER JOIN lpcontracts c
+            ON c.contractid = a.contractid
+    WHERE a.PonoID = :poNoId
+  `;
+  const result = await db.execute(sql, { poNoId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
+  const row = result.rows.length > 0 ? result.rows[0] : null;
+
+  if (!row) return null;
+
+  const header = {
+    poNoId: row.PONOID || row.ponoid,
+    accYrSetId: row.ACCYRSETID || row.accyrsetid,
+    lpSupplierId: row.LPSUPPLIERID || row.lpsupplierid,
+    contractId: row.CONTRID || row.contrid || row.CONTRACTID || row.contractid,
+    contractNo: row.CONTRACTNO || row.contractno,
+    poNo: row.PONO || row.pono,
+    poDate: row.PODATE || row.podate ? new Date(row.PODATE || row.podate).toLocaleDateString('en-GB').replace(/\//g, '-') : null,
+    categoryId: row.CATEGORYID || row.categoryid,
+    soValue: row.SOVALUE || row.sovalue,
+    itemCnt: row.ITEMCNT || row.itemcnt
+  };
+
+  const itemSql = `
+    SELECT 
+      a.OrderItemID,
+      i.ItemCode as "joinedItemCode",
+      i.ItemName as "joinedItemName",
+      i.Strength as "joinedStrength",
+      i.Unit as "joinedSku",
+      i.ItemTypeID as "joinedType",
+      i.PackingQty as "joinedPackQty",
+      a.AbsQty,
+      a.SingleUnitPrice,
+      a.ItemValue,
+      n.NocNumber as "joinedNocNumber"
+    FROM LPSoordereditems a
+    LEFT JOIN LPMasItems i ON a.LPItemID = i.LPItemID
+    LEFT JOIN mascgmscnoc n ON a.NOCID = n.NOCID
+    WHERE a.PoNoID = :poNoId
+  `;
+  const itemResult = await db.execute(itemSql, { poNoId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
+  
+  const items = itemResult.rows.map(r => ({
+    orderItemId: r.ORDERITEMID || r.orderitemid,
+    itemName: r.joinedItemName || r.JOINEDITEMNAME,
+    drugCode: r.joinedItemCode || r.JOINEDITEMCODE,
+    strength: r.joinedStrength || r.JOINEDSTRENGTH,
+    sku: r.joinedSku || r.JOINEDSKU,
+    itemType: r.joinedType || r.JOINEDTYPE,
+    packQty: r.joinedPackQty || r.JOINEDPACKQTY,
+    orderQty: r.ABSQTY || r.absqty,
+    unitPrice: r.SINGLEUNITPRICE || r.singleunitprice,
+    amount: r.ITEMVALUE || r.itemvalue,
+    nocDetail: r.joinedNocNumber || r.JOINEDNOCNUMBER
+  }));
+
+  return {
+    header,
+    items
+  };
+}
+
 async function getSupplyOrderItems(poNoId) {
   const sql = `
     SELECT 
@@ -318,8 +405,8 @@ async function getSupplyOrderItems(poNoId) {
       COALESCE(m.ItemCode, mi.ItemCode) as "itemCode",
       NVL(o.AbsQty,0) as "orderQty",
       NVL(o.SINGLEUNITPRICE,0) as "unitPrice",
-      NVL(o.ITEMVALUE,0) as "amount",
-      o.NOCDetail as "nocDetail"
+      o.ITEMVALUE as "amount",
+      o.NOCID as "nocDetail"
     FROM LPsoOrderedItems o
     LEFT JOIN LPContractItems ci ON o.ContractItemID = ci.ContractItemID
     LEFT JOIN LPMasItems m ON m.LPItemID = COALESCE(o.LPItemID, ci.LPItemID)
@@ -338,7 +425,7 @@ async function getSupplyOrderItems(poNoId) {
     orderQty: r.orderQty || r.ORDERQTY,
     unitPrice: r.unitPrice || r.UNITPRICE,
     amount: r.amount || r.AMOUNT,
-    nocDetail: r.nocDetail || r.NOCDETAIL
+    nocDetail: r.nocDetail || r.NOCID
   }));
 }
 
@@ -349,7 +436,7 @@ async function addSupplyOrderItem(poNoId, itemData) {
   
   const sql = `
     INSERT INTO LPsoOrderedItems (
-      OrderItemID, PoNoID, ItemID, LPItemID, ItemName, AbsQty, SINGLEUNITPRICE, ITEMVALUE, NOCDetail
+      OrderItemID, PoNoID, ItemID, LPItemID, ItemName, AbsQty, SINGLEUNITPRICE, ITEMVALUE, NOCID
     ) VALUES (
       :orderItemId, :poNoId, :itemId, :lpItemId, :itemName, :orderQty, :unitPrice, :amount, :nocDetail
     )
@@ -363,13 +450,40 @@ async function addSupplyOrderItem(poNoId, itemData) {
     orderQty: itemData.orderQty || 0,
     unitPrice: itemData.unitPrice || 0,
     amount: itemData.amount || 0,
-    nocDetail: itemData.nocDetail || ''
+    nocDetail: itemData.nocDetail || null
   }, { autoCommit: true });
   
   // Update SOValue in Header
   await updateSupplyOrderValue(poNoId);
   
   return { orderItemId: newId };
+}
+
+async function updateSupplyOrderItem(orderItemId, poNoId, itemData) {
+  const sql = `
+    UPDATE LPsoOrderedItems
+    SET 
+      ItemID = :itemId,
+      LPItemID = :lpItemId,
+      ItemName = :itemName,
+      AbsQty = :orderQty,
+      SINGLEUNITPRICE = :unitPrice,
+      ITEMVALUE = :amount,
+      NOCID = :nocDetail
+    WHERE OrderItemID = :orderItemId
+  `;
+  await db.execute(sql, {
+    orderItemId: orderItemId,
+    itemId: itemData.itemId || null,
+    lpItemId: itemData.lpItemId || null,
+    itemName: itemData.itemName || '',
+    orderQty: itemData.orderQty || 0,
+    unitPrice: itemData.unitPrice || 0,
+    amount: itemData.amount || 0,
+    nocDetail: itemData.nocDetail || null
+  }, { autoCommit: true });
+  
+  await updateSupplyOrderValue(poNoId);
 }
 
 async function deleteSupplyOrderItem(orderItemId, poNoId) {
@@ -871,6 +985,153 @@ async function completeReceipt(receiptId, facilityId) {
   return mrcNumber;
 }
 
+async function completeSupplyOrder(poNoId, dispatchNo, dispatchDate) {
+  let dateStr = null;
+  if (dispatchDate) {
+    const d = new Date(dispatchDate);
+    if (!isNaN(d)) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      dateStr = `${day}-${month}-${year}`;
+    }
+  }
+
+  const sql = `
+    UPDATE LPsoOrderPlaced 
+    SET STATUS = 'O', 
+        DISPATCHNO = :dispatchNo, 
+        DISPATCHDATE = TO_DATE(:dispatchDate, 'DD-MM-YYYY'),
+        PODate = SYSDATE
+    WHERE PONOID = :poNoId AND AmendNo = 0
+  `;
+  await db.execute(sql, {
+    dispatchNo: dispatchNo || null,
+    dispatchDate: dateStr,
+    poNoId
+  }, { autoCommit: true });
+  
+  return { success: true };
+}
+
+async function deleteSupplyOrder(poNoId) {
+  // Try to delete child tables first
+  const queries = [
+    `Delete from LPsoOrderDistribution where OrderItemID in (Select OrderItemID from LPsoOrderedItems Where PoNoID = :poNoId)`,
+    `Delete from LPsoWHDist where OrderItemID in (Select OrderItemID from LPsoOrderedItems Where PoNoID = :poNoId)`,
+    `Delete from LPsoTranches where PoNoID = :poNoId`,
+    `Delete from LPsoOrderedItems where PoNoID = :poNoId`,
+    `Delete from LPsoOrderPlaced where PoNoID = :poNoId`
+  ];
+  
+  for (let q of queries) {
+    await db.execute(q, { poNoId }, { autoCommit: true });
+  }
+  return { success: true };
+}
+
+async function amendSupplyOrder(poNoId) {
+  const queries = [
+    `Insert into LPsoOrderPlaced_Amend (PONOID, ACCYRSETID, SOURCEID, SCHEMEID, CONTRACTID, SUPPLIERID, ORDERTYPE, PONO, PODATE, BUDGETRELEASEID, STATUS, ISSCHEDULELATER, ISQCPREDISPATCHED, SOISSUEDATE, SOValue, AMENDNO, AmendDate, PSAID) Select PONOID, ACCYRSETID, SOURCEID, SCHEMEID, CONTRACTID, SUPPLIERID, ORDERTYPE, PONO, PODATE, BUDGETRELEASEID, STATUS, ISSCHEDULELATER, ISQCPREDISPATCHED, SOISSUEDATE, SOValue, AMENDNO, AmendDate, PSAID from LPsoOrderPlaced Where PoNoID = :poNoId`,
+    `Insert into LPsoOrderedItems_Amend (AMENDNO, ORDERITEMID, PONOID, ITEMID, SUPPLIERPACKQTY, UQTY, ABSQTY, SINGLEUNITPRICE, ITEMVALUE, RECEIPTABSQTY, ITEMSTATUS, SCHEDULECALCBY, CONTRACTITEMID, ADVINVOICEQTY, INVOICEQTY) Select b.AmendNo, a.ORDERITEMID, a.PONOID, a.ITEMID, a.SUPPLIERPACKQTY, a.UQTY, a.ABSQTY, a.SINGLEUNITPRICE, a.ITEMVALUE, a.RECEIPTABSQTY, a.ITEMSTATUS, a.SCHEDULECALCBY, a.CONTRACTITEMID, a.ADVINVOICEQTY, a.INVOICEQTY from LPsoOrderedItems a Inner Join LPsoOrderPlaced b on (b.PoNoID = a.PoNoID) Where b.PoNoID = :poNoId`,
+    `Insert into LPsoTranches_Amend (AMENDNO, DURATIONID, PONOID, DURATION, DTYPE, EXPDATE, TRANCHE) Select b.AmendNo, a.DURATIONID, a.PONOID, a.DURATION, a.DTYPE, a.EXPDATE, a.TRANCHE from soTranches a Inner Join LPsoOrderPlaced b on (b.PoNoID = a.PoNoID) Where b.PoNoID = :poNoId`,
+    `Insert into LPsoOrderDistribution_Amend (AMENDNO, ORDERDISTRIBUTIONID, ORDERITEMID, WAREHOUSEID, ABSQTY, RECEIPTABSQTY, REMARKS, DURATIONID) Select b.AmendNo, a1.ORDERDISTRIBUTIONID, a1.ORDERITEMID, a1.WAREHOUSEID, a1.ABSQTY, a1.RECEIPTABSQTY, a1.REMARKS, a1.DURATIONID from LPsoOrderDistribution a1 Inner Join LPsoOrderedItems a on (a.OrderItemID = a1.OrderItemID) Inner Join LPsoOrderPlaced b on (b.PoNoID = a.PoNoID) Where b.PoNoID = :poNoId`,
+    `Insert into LPsoWHDist_Amend (AMENDNO, WHDISTID, ORDERITEMID, WAREHOUSEID, ABSQTY, RECEIPTABSQTY, INVOICEQTY, SUPPLIERRETURNQTY) Select b.AmendNo, a1.WHDISTID, a1.ORDERITEMID, a1.WAREHOUSEID, a1.ABSQTY, a1.RECEIPTABSQTY, a1.INVOICEQTY, a1.SUPPLIERRETURNQTY from LPsoWHDist a1 Inner Join LPsoOrderedItems a on (a.OrderItemID = a1.OrderItemID) Inner Join LPsoOrderPlaced b on (b.PoNoID = a.PoNoID) Where b.PoNoID = :poNoId`,
+    `Update LPsoOrderPlaced set AmendNo = NVL(AmendNo, 0) + 1, AmendDate = sysdate, Status = 'I' Where PoNoID = :poNoId`
+  ];
+
+  for (let q of queries) {
+    await db.execute(q, { poNoId }, { autoCommit: true });
+  }
+  return { success: true };
+}
+
+async function getNocDetails(facilityId, itemId) {
+  const sql = `
+    select distinct 
+      to_char(nocdate, 'DD-MON-YYYY') || '-' || Nocnumber as "nocNumberStr", 
+      mn.nocid as "nocId", 
+      nocdate as "nocDate", 
+      i.itemid as "itemId" 
+    from mascgmscnoc mn 
+    inner join mascgmscnocitems i on i.nocid=mn.nocid
+    inner join masfacilities f on f.facilityid=mn.facilityid and f.isactive=1
+    inner join masfacilitytypes ft  on ft.facilitytypeid=f.facilitytypeid
+    where mn.status='C' 
+      and mn.facilityid= :facilityId
+      and (
+        (case when ft.hodid=2 and mn.nocdate>'01-SEP-2024' then
+          case when nvl(i.IsCGMSCAPR,'NA') ='Y' then 'Y' 
+          else 
+            case when nvl(i.IsCGMSCAPR,'NA')='N' then 'N' 
+            else 
+              case when nvl(i.IsCGMSCAPR,'NA')='NA' and sysdate>( nvl(CMHOAppliedDTTime,nocdate) + 48/24) then 'Y' 
+              else 'NA' 
+              end 
+            end
+          end 
+        else 'Y' end) in ('N' ,'Y')
+      )
+      and (case when ft.hodid=2 then nvl(i.facreqqty,i.Approvedqty) else nvl(i.Approvedqty,0) end )>0
+      and nocdate+220>sysdate
+      and i.itemid= :itemId
+    order by nocdate desc
+  `;
+  const result = await db.execute(sql, { facilityId, itemId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
+  return result.rows.map(r => ({
+    nocNumberStr: r.nocNumberStr || r.NOCNUMBERSTR,
+    nocId: r.nocId || r.NOCID,
+    nocDate: r.nocDate || r.NOCDATE,
+    itemId: r.itemId || r.ITEMID
+  }));
+}
+
+async function getNocBalance(nocId, itemId) {
+  const sql = `
+    select 
+      nvl(i.approvedqty,0)* m.unitcount as "approvedqty",
+      nvl(opo.poqty,0) as "poqty",
+      (nvl(i.approvedqty,0)* m.unitcount)-nvl(opo.poqty,0) as "BalQyy" 
+    from mascgmscnoc mn 
+    inner join mascgmscnocitems i on i.nocid=mn.nocid
+    inner join masfacilities f on f.facilityid=mn.facilityid and f.isactive=1
+    inner join masfacilitytypes ft on ft.facilitytypeid=f.facilitytypeid
+    inner join vmasitems m on m.itemid=i.itemid 
+    left outer join (
+      select si.nocid, si.LPITEMID as ITEMID, ABSQTY as poqty 
+      from LPsoOrderPlaced a   
+      inner join LPsoOrderedItems si on si.PONOID=a.PONOID
+      where a.status='O' and nocid is not null
+    ) opo on opo.nocid=mn.nocid and opo.itemid=i.itemid
+    where mn.status='C' 
+      and i.nocid= :nocId
+      and m.itemid= :itemId
+      and (
+        (case when ft.hodid=2 and mn.nocdate>'01-SEP-2024' then
+          case when nvl(i.IsCGMSCAPR,'NA') ='Y' then 'Y' 
+          else 
+            case when nvl(i.IsCGMSCAPR,'NA')='N' then 'N' 
+            else 
+              case when nvl(i.IsCGMSCAPR,'NA')='NA' and sysdate>( nvl(CMHOAppliedDTTime,nocdate) + 48/24) then 'Y' 
+              else 'NA' 
+              end 
+            end
+          end 
+        else 'Y' end) in ('N' ,'Y')
+      )
+  `;
+  const result = await db.execute(sql, { nocId, itemId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
+  if (result.rows && result.rows.length > 0) {
+    const r = result.rows[0];
+    return {
+      approvedqty: r.approvedqty || r.APPROVEDQTY,
+      poqty: r.poqty || r.POQTY,
+      balQyy: r.BalQyy || r.BALQYY
+    };
+  }
+  return null;
+}
+
 module.exports = {
   getBudgets,
   getBudgetDetails,
@@ -882,8 +1143,10 @@ module.exports = {
   deleteSupplier,
   getSupplyOrders,
   getSupplyOrderDetails,
+  getSupplyOrderEditDetails,
   getSupplyOrderItems,
   addSupplyOrderItem,
+  updateSupplyOrderItem,
   deleteSupplyOrderItem,
   generateSupplyOrderNo,
   saveSupplyOrderHeader,
@@ -895,5 +1158,10 @@ module.exports = {
   getReceiptBatches,
   saveReceiptBatch,
   deleteReceiptBatch,
-  completeReceipt
+  completeReceipt,
+  completeSupplyOrder,
+  deleteSupplyOrder,
+  amendSupplyOrder,
+  getNocDetails,
+  getNocBalance
 };

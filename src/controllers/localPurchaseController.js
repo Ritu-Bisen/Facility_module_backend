@@ -121,6 +121,19 @@ const getSupplyOrderDetails = async (req, res) => {
   }
 };
 
+const getSupplyOrderEditDetails = async (req, res) => {
+  try {
+    const { poNoId } = req.params;
+    const result = await localPurchaseService.getSupplyOrderEditDetails(poNoId);
+    if (!result) return res.status(404).json({ success: false, message: 'Supply order edit details not found' });
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching supply order edit details:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch supply order edit details' });
+  }
+};
+
+
 const getSupplyOrderItems = async (req, res) => {
   try {
     const { id } = req.params;
@@ -139,7 +152,18 @@ const addSupplyOrderItem = async (req, res) => {
     res.json({ success: true, data: result, message: 'Item added successfully' });
   } catch (error) {
     console.error('Error adding supply order item:', error);
-    res.status(500).json({ success: false, message: 'Failed to add supply order item' });
+    res.status(500).json({ success: false, message: 'Failed to add supply order item', error: error.message });
+  }
+};
+
+const updateSupplyOrderItem = async (req, res) => {
+  try {
+    const { id, itemId } = req.params;
+    await localPurchaseService.updateSupplyOrderItem(itemId, id, req.body);
+    res.json({ success: true, message: 'Item updated successfully' });
+  } catch (error) {
+    console.error('Error updating supply order item:', error);
+    res.status(500).json({ success: false, message: 'Failed to update supply order item', error: error.message });
   }
 };
 
@@ -292,6 +316,70 @@ async function completeReceipt(req, res) {
   }
 }
 
+async function completeSupplyOrder(req, res) {
+  try {
+    const poNoId = req.params.poNoId;
+    const { dispatchNo, dispatchDate } = req.body;
+    
+    await localPurchaseService.completeSupplyOrder(poNoId, dispatchNo, dispatchDate);
+    res.json({ success: true, message: 'Supply order completed successfully' });
+  } catch (err) {
+    console.error('Error completing supply order:', err);
+    res.status(500).json({ success: false, message: 'Failed to complete supply order' });
+  }
+}
+
+async function deleteSupplyOrder(req, res) {
+  try {
+    const poNoId = req.params.poNoId;
+    await localPurchaseService.deleteSupplyOrder(poNoId);
+    res.json({ success: true, message: 'Supply order deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting supply order:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete supply order' });
+  }
+}
+
+async function amendSupplyOrder(req, res) {
+  try {
+    const poNoId = req.params.poNoId;
+    await localPurchaseService.amendSupplyOrder(poNoId);
+    res.json({ success: true, message: 'Supply order amended successfully' });
+  } catch (err) {
+    console.error('Error amending supply order:', err);
+    res.status(500).json({ success: false, message: 'Failed to amend supply order' });
+  }
+}
+
+async function getNocDetails(req, res) {
+  try {
+    const { itemId } = req.query;
+    const facilityId = req.user?.facilityId || req.user?.FacilityID;
+    if (!facilityId || !itemId) {
+      return res.status(400).json({ success: false, message: 'Missing facilityId or itemId' });
+    }
+    const data = await localPurchaseService.getNocDetails(facilityId, itemId);
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching NOC details:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch NOC details' });
+  }
+}
+
+async function getNocBalance(req, res) {
+  try {
+    const { nocId, itemId } = req.query;
+    if (!nocId || !itemId) {
+      return res.status(400).json({ success: false, message: 'Missing nocId or itemId' });
+    }
+    const data = await localPurchaseService.getNocBalance(nocId, itemId);
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching NOC balance:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch NOC balance' });
+  }
+}
+
 module.exports = {
   getBudgets,
   getBudgetDetails,
@@ -303,8 +391,10 @@ module.exports = {
   deleteSupplier,
   getSupplyOrders,
   getSupplyOrderDetails,
+  getSupplyOrderEditDetails,
   getSupplyOrderItems,
   addSupplyOrderItem,
+  updateSupplyOrderItem,
   deleteSupplyOrderItem,
   generateSupplyOrderNo,
   saveSupplyOrderHeader,
@@ -316,5 +406,10 @@ module.exports = {
   getReceiptBatches,
   saveReceiptBatch,
   deleteReceiptBatch,
-  completeReceipt
+  completeReceipt,
+  completeSupplyOrder,
+  deleteSupplyOrder,
+  amendSupplyOrder,
+  getNocDetails,
+  getNocBalance
 };
