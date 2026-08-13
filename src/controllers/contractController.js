@@ -178,6 +178,17 @@ async function deleteContractItem(req, res) {
   }
 }
 
+async function updateContractItem(req, res) {
+  try {
+    const { itemId } = req.params;
+    await contractService.updateContractItem(itemId, req.body);
+    res.json({ success: true, message: 'Item updated successfully' });
+  } catch (err) {
+    console.error('Error updating contract item:', err);
+    res.status(500).json({ error: 'Failed to update contract item' });
+  }
+}
+
 async function completeContract(req, res) {
   try {
     const { id } = req.params;
@@ -187,6 +198,18 @@ async function completeContract(req, res) {
   } catch (err) {
     console.error('Error completing contract:', err);
     res.status(500).json({ error: 'Failed to complete contract' });
+  }
+}
+
+async function amendContract(req, res) {
+  try {
+    const { id } = req.params;
+    const facilityId = req.user.facilityId;
+    await contractService.amendContract(id, facilityId);
+    res.json({ success: true, message: 'Contract amendment initiated successfully' });
+  } catch (err) {
+    console.error('Error amending contract:', err);
+    res.status(500).json({ error: 'Failed to initiate contract amendment' });
   }
 }
 
@@ -205,6 +228,8 @@ module.exports = {
   completeContract,
   getContractItems,
   addContractItem,
+  updateContractItem,
   deleteContractItem,
+  amendContract,
   getLocalItems
 };

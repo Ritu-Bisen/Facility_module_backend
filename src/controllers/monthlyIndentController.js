@@ -328,11 +328,11 @@ async function deleteNocItem(req, res) {
   async function getWarehouseItems(req, res) {
     try {
       const facilityId = req.user.facilityId;
-      const { itemType } = req.query; // 'AVAILABLE' or 'STOCKOUT'
+      const { itemType, categoryId } = req.query; // 'AVAILABLE', 'STOCKOUT', 'STOCK_AND_AVAILABLE'
       if (!itemType) {
         return res.status(400).json({ error: 'itemType query parameter is required' });
       }
-      const items = await monthlyIndentModel.getWarehouseItemsForFacility(facilityId, itemType);
+      const items = await monthlyIndentModel.getWarehouseItemsForFacility(facilityId, itemType, categoryId);
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: error.message });

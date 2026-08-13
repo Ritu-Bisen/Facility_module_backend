@@ -20,10 +20,12 @@ router.get('/:id', authenticate, contractController.getContractById);
 router.post('/', authenticate, contractController.createContract);
 router.put('/:id', authenticate, contractController.updateContract);
 router.put('/:id/complete', authenticate, contractController.completeContract);
+router.put('/:id/amend', authenticate, contractController.amendContract);
 
 // Contract Items
 router.get('/:id/items', authenticate, contractController.getContractItems);
 router.post('/:id/items', authenticate, contractController.addContractItem);
+router.put('/items/:itemId', authenticate, contractController.updateContractItem);
 router.delete('/items/:itemId', authenticate, contractController.deleteContractItem);
 
 module.exports = router;

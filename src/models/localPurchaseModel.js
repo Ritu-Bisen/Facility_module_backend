@@ -360,16 +360,16 @@ async function getSupplyOrderEditDetails(poNoId) {
       a.OrderItemID,
       i.ItemCode as "joinedItemCode",
       i.ItemName as "joinedItemName",
-      i.Strength as "joinedStrength",
-      i.Unit as "joinedSku",
-      i.ItemTypeID as "joinedType",
+      i.STRENGTH1 as "joinedStrength",
+      i.UNIT as "joinedSku",
+      null as "joinedType",
       i.PackingQty as "joinedPackQty",
       a.AbsQty,
       a.SingleUnitPrice,
       a.ItemValue,
       n.NocNumber as "joinedNocNumber"
     FROM LPSoordereditems a
-    LEFT JOIN LPMasItems i ON a.LPItemID = i.LPItemID
+    LEFT JOIN VMASITEMS i ON i.ItemID = COALESCE(a.LPItemID, a.ItemID)
     LEFT JOIN mascgmscnoc n ON a.NOCID = n.NOCID
     WHERE a.PoNoID = :poNoId
   `;
@@ -401,16 +401,26 @@ async function getSupplyOrderItems(poNoId) {
       o.OrderItemID as "orderItemId",
       o.ItemID as "itemId",
       o.LPItemID as "lpItemId",
-      COALESCE(m.ItemName, mi.ItemName, o.ItemName) as "itemName",
-      COALESCE(m.ItemCode, mi.ItemCode) as "itemCode",
+      COALESCE(v.ItemName, o.ItemName) as "itemName",
+      v.ItemCode as "itemCode",
       NVL(o.AbsQty,0) as "orderQty",
       NVL(o.SINGLEUNITPRICE,0) as "unitPrice",
       o.ITEMVALUE as "amount",
-      o.NOCID as "nocDetail"
+      n.NocNumber as "nocDetail",
+      v.STRENGTH1 as "strength",
+      v.UNIT as "unit",
+      ci.MANUFACTURER as "manufacturer",
+      ci.BASICRATE as "basicRate",
+      ci.PERCENTVALUEGST as "gst"
     FROM LPsoOrderedItems o
-    LEFT JOIN LPContractItems ci ON o.ContractItemID = ci.ContractItemID
-    LEFT JOIN LPMasItems m ON m.LPItemID = COALESCE(o.LPItemID, ci.LPItemID)
-    LEFT JOIN MasItems mi ON mi.ItemID = COALESCE(o.ItemID, ci.ItemID)
+    INNER JOIN LPsoOrderPlaced op ON o.PoNoID = op.PoNoID
+    LEFT JOIN LPContractItems ci ON op.ContractID = ci.ContractID 
+      AND (
+        (o.LPItemID IS NOT NULL AND ci.LPItemID = o.LPItemID)
+        OR (o.ItemID IS NOT NULL AND ci.ItemID = o.ItemID)
+      )
+    LEFT JOIN VMASITEMS v ON v.ItemID = COALESCE(o.LPItemID, o.ItemID, ci.LPItemID, ci.ItemID)
+    LEFT JOIN mascgmscnoc n ON o.NOCID = n.NOCID
     WHERE o.PoNoID = :poNoId
     ORDER BY o.OrderItemID
   `;
@@ -423,9 +433,15 @@ async function getSupplyOrderItems(poNoId) {
     itemName: r.itemName || r.ITEMNAME,
     drugCode: (r.itemCode || r.ITEMCODE || '').toString(),
     orderQty: r.orderQty || r.ORDERQTY,
+    orderQuantity: r.orderQty || r.ORDERQTY,
     unitPrice: r.unitPrice || r.UNITPRICE,
     amount: r.amount || r.AMOUNT,
-    nocDetail: r.nocDetail || r.NOCID
+    nocDetail: r.nocDetail || r.NOCDETAIL,
+    strength: r.strength || r.STRENGTH || '',
+    unit: r.unit || r.UNIT || '',
+    manufacturer: r.manufacturer || r.MANUFACTURER || '',
+    basicRate: r.basicRate || r.BASICRATE || 0,
+    gst: r.gst || r.GST || 0
   }));
 }
 

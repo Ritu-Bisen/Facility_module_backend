@@ -137,9 +137,9 @@ async function getPrograms() {
  */
 async function getItemCategories() {
   const query = `
-    SELECT CATEGORYID, CATEGORYNAME
-    FROM MASITEMCATEGORIES
-    ORDER BY CATEGORYNAME
+    SELECT MCID, MCATEGORY
+    FROM MASITEMMAINCATEGORY
+    ORDER BY MCID
   `;
   const result = await db.execute(query, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
   return result.rows;
@@ -629,7 +629,7 @@ async function getFmItemsForFacility(facilityId, itemType, categoryId = 1) {
         group by itemid
     ) facstock
         on facstock.itemid=l.itemid
-    WHERE (ITEMTYPENAME = :categoryId OR :categoryId = '1') 
+    WHERE (l.MCID = :categoryId OR :categoryId IS NULL OR :categoryId = 0 OR :categoryId = '0') 
       AND WAREHOUSEID = 2617 
       AND CGMSCFM = :itemType
       AND (nvl(READYQTY,0) + nvl(UQQTY,0) + nvl(IWHPIPQTY,0)) > 0
@@ -744,7 +744,7 @@ left outer join
 ) facstock
     on facstock.itemid=l.itemid
 
-where (ITEMTYPENAME = :categoryId OR :categoryId = '1')
+where (l.MCID = :categoryId OR :categoryId IS NULL OR :categoryId = 0 OR :categoryId = '0')
 
 and WAREHOUSEID in
 (
@@ -888,7 +888,7 @@ left outer join
 ) facstock
     on facstock.itemid = l.itemid
 
-where (ITEMTYPENAME = :categoryId OR :categoryId = '1')
+where (l.MCID = :categoryId OR :categoryId IS NULL OR :categoryId = 0 OR :categoryId = '0')
   and WAREHOUSEID in
 (
     select warehouseid
@@ -1202,7 +1202,7 @@ WHERE tb.issuetype = 'NO' and sysdate between ay.startdate and ay.enddate
     ) iss on iss.itemid=a.itemid
     
     inner join mv_masitems m on m.itemid=a.itemid
-    where (m.ITEMTYPENAME = :categoryId OR :categoryId = '1')
+    where (m.MCID = :categoryId OR :categoryId IS NULL OR :categoryId = 0 OR :categoryId = '0')
   `;
   const binds = { facilityId, categoryId };
   const result = await db.execute(query, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT });

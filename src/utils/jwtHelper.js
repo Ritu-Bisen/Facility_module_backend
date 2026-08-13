@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'default_jwt_secret';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '20h';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '20m';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'default_refresh_secret';
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 const JWT_MFA_SECRET = process.env.JWT_MFA_SECRET || 'default_mfa_secret';

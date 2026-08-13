@@ -77,9 +77,19 @@ async function deleteContractItem(contractItemId) {
   await contractModel.deleteContractItem(contractItemId);
 }
 
+async function updateContractItem(contractItemId, data) {
+  if (!contractItemId) throw new Error('Contract Item ID is required');
+  await contractModel.updateContractItem(contractItemId, data);
+}
+
 async function completeContract(contractId, facilityId) {
   if (!contractId || !facilityId) throw new Error('Contract ID and Facility ID are required');
   await contractModel.completeContract(contractId, facilityId);
+}
+
+async function amendContract(contractId, facilityId) {
+  if (!contractId || !facilityId) throw new Error('Contract ID and Facility ID are required');
+  await contractModel.amendContract(contractId, facilityId);
 }
 
 module.exports = {
@@ -97,6 +107,8 @@ module.exports = {
   completeContract,
   getContractItems,
   addContractItem,
+  updateContractItem,
   deleteContractItem,
+  amendContract,
   getLocalItems
 };

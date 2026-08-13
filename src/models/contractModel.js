@@ -10,7 +10,13 @@ async function getContracts(facilityId, finYear) {
       to_char(t.tenderdate, 'dd-MM-yyyy') as "tenderDate",
       t.tenderno as "tenderNo",
       t.tenderdetails as "tenderDetails",
-      CASE WHEN Con.Status = 'IN' THEN 'Incomplete' ELSE 'Awarded' END as "status"
+      Con.Status as "rawStatus",
+      COALESCE(Con.AmendNo, 0) as "amendNo",
+      CASE 
+        WHEN Con.Status = 'IN' AND COALESCE(Con.AmendNo, 0) > 0 THEN 'Amend Incomplete'
+        WHEN Con.Status = 'IN' THEN 'Incomplete'
+        ELSE 'Awarded'
+      END as "status"
     FROM LPContracts Con
     INNER JOIN usrusers psa ON psa.facilityid = Con.PSAID
     LEFT JOIN masSuppliers Sup ON Sup.SupplierID = Con.SupplierID
@@ -32,7 +38,9 @@ async function getContracts(facilityId, finYear) {
     tenderDate: r.tenderDate || r.TENDERDATE,
     tenderNo: r.tenderNo || r.TENDERNO,
     tenderDetails: r.tenderDetails || r.TENDERDETAILS,
-    status: r.status || r.STATUS
+    status: r.status || r.STATUS,
+    rawStatus: r.rawStatus || r.RAWSTATUS,
+    amendNo: r.amendNo || r.AMENDNO
   }));
 }
 
@@ -44,7 +52,9 @@ async function getContractById(facilityId, id) {
       LPSupplierID as "supplier",
       SchemeId as "tenderNo",
       ContractNo as "contractNo",
-      to_char(ContractDate, 'yyyy-MM-dd') as "contractDate"
+      to_char(ContractDate, 'yyyy-MM-dd') as "contractDate",
+      Status as "status",
+      COALESCE(AmendNo, 0) as "amendNo"
     FROM LPContracts
     WHERE ContractID = :id AND PSAID = :facilityId
   `;
@@ -57,7 +67,9 @@ async function getContractById(facilityId, id) {
     supplier: (r.supplier || r.SUPPLIER)?.toString(),
     tenderNo: (r.tenderNo || r.TENDERNO)?.toString(),
     contractNo: (r.contractNo || r.CONTRACTNO)?.toString(),
-    contractDate: r.contractDate || r.CONTRACTDATE
+    contractDate: r.contractDate || r.CONTRACTDATE,
+    status: r.status || r.STATUS,
+    amendNo: r.amendNo || r.AMENDNO
   };
 }
 
@@ -143,7 +155,8 @@ async function getTendersList(facilityId, finYearId) {
       to_char(t.tenderdate, 'YYYY-MM-DD') as "tenderDate",
       t.accyrsetid as "accyrsetid",
       a.accyear as "accyear",
-      t.TermCondition as "termCondition"
+      t.TermCondition as "termCondition",
+      t.type as "type"
     FROM LPMASTENDERS t
     INNER JOIN masaccyearsettings a ON a.accyrsetid = t.accyrsetid
     WHERE t.accyrsetid = :finYearId AND t.Facilityid = :facilityId
@@ -156,16 +169,17 @@ async function getTendersList(facilityId, finYearId) {
     tenderDate: r.tenderDate || r.TENDERDATE,
     accyrsetid: r.accyrsetid || r.ACCYRSETID,
     accyear: r.accyear || r.ACCYEAR,
-    termCondition: r.termCondition || r.TERMCONDITION
+    termCondition: r.termCondition || r.TERMCONDITION,
+    type: r.type || r.TYPE || 'T'
   }));
 }
 
 async function createTender(facilityId, data) {
   const sql = `
     INSERT INTO LPMASTENDERS (
-      Facilityid, tenderno, tenderdetails, tenderdate, entrydate, accyrsetid, TermCondition
+      Facilityid, tenderno, tenderdetails, tenderdate, entrydate, accyrsetid, TermCondition, type
     ) VALUES (
-      :facilityId, :tenderNo, :tenderDetails, TO_DATE(:tenderDate, 'YYYY-MM-DD'), sysdate, :accyrsetid, :termCondition
+      :facilityId, :tenderNo, :tenderDetails, TO_DATE(:tenderDate, 'YYYY-MM-DD'), sysdate, :accyrsetid, :termCondition, :type
     )
   `;
   await db.execute(sql, {
@@ -174,7 +188,8 @@ async function createTender(facilityId, data) {
     tenderDetails: data.tenderDetails,
     tenderDate: data.tenderDate,
     accyrsetid: data.accyrsetid,
-    termCondition: data.termCondition || null
+    termCondition: data.termCondition || null,
+    type: data.type || 'T'
   }, { autoCommit: true });
 }
 
@@ -185,7 +200,8 @@ async function updateTender(tenderId, data) {
       tenderdetails = :tenderDetails,
       tenderdate = TO_DATE(:tenderDate, 'YYYY-MM-DD'),
       accyrsetid = :accyrsetid,
-      TermCondition = :termCondition
+      TermCondition = :termCondition,
+      type = :type
     WHERE tenderid = :tenderId
   `;
   await db.execute(sql, {
@@ -194,7 +210,8 @@ async function updateTender(tenderId, data) {
     tenderDetails: data.tenderDetails,
     tenderDate: data.tenderDate,
     accyrsetid: data.accyrsetid,
-    termCondition: data.termCondition || null
+    termCondition: data.termCondition || null,
+    type: data.type || 'T'
   }, { autoCommit: true });
 }
 
@@ -357,6 +374,92 @@ async function completeContract(contractId, facilityId) {
   }, { autoCommit: true });
 }
 
+async function updateContractItem(itemId, data) {
+  const itemValue = (parseFloat(data.unitPrice) * parseFloat(data.qty)).toFixed(2);
+  const sql = `
+    UPDATE LPContractItems SET 
+      SingleUnitPrice = :unitPrice,
+      ContractAbsQty = :qty,
+      ItemValue = :itemValue,
+      Manufacturer = :manufacturer,
+      PercentValueGST = :gst,
+      BasicRate = :basicRate
+    WHERE CONTRACTITEMID = :itemId
+  `;
+  await db.execute(sql, {
+    itemId: parseInt(itemId, 10),
+    unitPrice: parseFloat(data.unitPrice),
+    qty: parseFloat(data.qty),
+    itemValue: parseFloat(itemValue),
+    manufacturer: data.manufacturer || null,
+    gst: data.gst ? parseFloat(data.gst) : null,
+    basicRate: data.basicRate ? parseFloat(data.basicRate) : null
+  }, { autoCommit: true });
+}
+
+async function amendContract(contractId, facilityId) {
+  const cid = parseInt(contractId, 10);
+  const fid = parseInt(facilityId, 10);
+
+  // 1. Get current AmendNo
+  const selectRes = await db.execute(
+    `SELECT COALESCE(AmendNo, 0) as "amendNo" FROM LPContracts WHERE ContractID = :cid AND PSAID = :fid`,
+    { cid, fid },
+    { outFormat: 4002 }
+  );
+  const currentAmendNo = selectRes.rows && selectRes.rows.length > 0 ? (selectRes.rows[0].amendNo || selectRes.rows[0].AMENDNO || 0) : 0;
+
+  // 2. Backup Header to LPCONTRACTS_AMEND
+  try {
+    const q1 = `
+      INSERT INTO LPCONTRACTS_AMEND 
+        (CONTRACTID,ACCYRSETID,CONTRACTNO,CONTRACTDATE,CONTRACTTYPE,CONTRACTDURATION,CONTRACTDTYPE,CONTRACTACCEPTEDDATE,CONTRACTSTARTDATE,CONTRACTENDDATE,REMARKS,SUPPLIERID,STATUS,CONTRACTDESCRIPTION,CONTRACTVALUE,ISDIRECTCONTRACT,PSAID,LPSUPPLIERID,AMENDNO,AmendDate) 
+      SELECT 
+        CONTRACTID,ACCYRSETID,CONTRACTNO,CONTRACTDATE,CONTRACTTYPE,CONTRACTDURATION,CONTRACTDTYPE,CONTRACTACCEPTEDDATE,CONTRACTSTARTDATE,CONTRACTENDDATE,REMARKS,SUPPLIERID,STATUS,CONTRACTDESCRIPTION,CONTRACTVALUE,ISDIRECTCONTRACT,PSAID,LPSUPPLIERID,AMENDNO,AmendDate 
+      FROM LPContracts WHERE ContractID = :cid
+    `;
+    await db.execute(q1, { cid }, { autoCommit: true });
+  } catch (err) {
+    console.error("Backup LPCONTRACTS_AMEND note:", err.message);
+  }
+
+  // 3. Backup Items to LPCONTRACTITEMS_AMEND
+  try {
+    const q2 = `
+      INSERT INTO LPCONTRACTITEMS_AMEND 
+        (CONTRACTITEMID,CONTRACTID,ITEMID,SINGLEUNITPRICE,SUPPLIEROFFEREDPACKQTY,PACKSPECIFICATION,CONTRACTABSQTY,ITEMVALUE,LPITEMID,ISACTIVE,DEACTIVATEDDATE,AMENDNO) 
+      SELECT 
+        CONTRACTITEMID,CONTRACTID,ITEMID,SINGLEUNITPRICE,SUPPLIEROFFEREDPACKQTY,PACKSPECIFICATION,CONTRACTABSQTY,ITEMVALUE,LPITEMID,ISACTIVE,DEACTIVATEDDATE, :amendNo
+      FROM LPContractItems WHERE ContractID = :cid
+    `;
+    await db.execute(q2, { cid, amendNo: currentAmendNo }, { autoCommit: true });
+  } catch (err) {
+    console.error("Backup LPCONTRACTITEMS_AMEND note:", err.message);
+  }
+
+  // 4. Backup Sec Dep to LPCONTRACTSECURITYDEP_AMEND if exists
+  try {
+    const q3 = `
+      INSERT INTO LPCONTRACTSECURITYDEP_AMEND 
+        (SECURITYDEPOSITID,CONTRACTID,DOCUMENTNO,DOCUMENTDATE,DOCUMENTEXPDATE,DOCUMENTVALUE,BANKNAME,BRANCH,REMARKS,DOCUMENTTYPE,STATUS,RETURNDATE,RETURNBY,COMMENTS,AMENDNO) 
+      SELECT 
+        SECURITYDEPOSITID,CONTRACTID,DOCUMENTNO,DOCUMENTDATE,DOCUMENTEXPDATE,DOCUMENTVALUE,BANKNAME,BRANCH,REMARKS,DOCUMENTTYPE,STATUS,RETURNDATE,RETURNBY,COMMENTS, :amendNo
+      FROM LPCONTRACTSECURITYDEP WHERE ContractID = :cid
+    `;
+    await db.execute(q3, { cid, amendNo: currentAmendNo }, { autoCommit: true });
+  } catch (err) {
+    console.error("Backup LPCONTRACTSECURITYDEP_AMEND note:", err.message);
+  }
+
+  // 5. Update LPCONTRACTS: AmendNo = AmendNo + 1, AmendDate = sysdate, Status = 'IN'
+  const updateSql = `
+    UPDATE LPContracts 
+    SET AmendNo = COALESCE(AmendNo, 0) + 1, AmendDate = SYSDATE, Status = 'IN' 
+    WHERE ContractID = :cid AND PSAID = :fid
+  `;
+  await db.execute(updateSql, { cid, fid }, { autoCommit: true });
+}
+
 module.exports = {
   getContracts,
   getTenders,
@@ -372,6 +475,8 @@ module.exports = {
   completeContract,
   getContractItems,
   addContractItem,
+  updateContractItem,
   deleteContractItem,
+  amendContract,
   getLocalItems
 };
