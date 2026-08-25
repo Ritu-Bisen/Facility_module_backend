@@ -2,8 +2,12 @@ const svgCaptcha = require('svg-captcha');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 
-// Load custom solid Comic Sans MS font to ensure characters are filled solid instead of hollow outline bubble letters
-svgCaptcha.loadFont(path.join(__dirname, '../fonts/comic.ttf'));
+// Load custom solid Comic Sans MS font with fallback to default font if missing/inaccessible on server
+try {
+  svgCaptcha.loadFont(path.join(__dirname, '../fonts/comic.ttf'));
+} catch (err) {
+  console.error('Failed to load custom captcha font, falling back to default font:', err.message);
+}
 
 const CAPTCHA_SECRET = process.env.JWT_SECRET || 'default_jwt_secret';
 

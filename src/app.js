@@ -55,7 +55,7 @@ app.use(
     },
   })
 );
-const allowedOrigins = ['https://dpdmis.in', 'http://localhost:5173'];
+const allowedOrigins = ['https://dpdmis.in', 'http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001'];
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (e.g., server-to-server) or from allowed origins
