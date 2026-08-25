@@ -77,10 +77,154 @@ async function deleteDistribution(req, res) {
   }
 }
 
+async function getMcHospitalAiVsIssuance(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 23393;
+    const data = await annualIndentModel.getMcHospitalAiVsIssuance(facilityId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getMcHospitalAiVsIssuance:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getDownloadAiFormatData(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const data = await annualIndentModel.getDownloadAiFormatData(facilityId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getDownloadAiFormatData:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getUploadForwardFinYears(req, res) {
+  try {
+    const data = await annualIndentModel.getUploadForwardFinYears();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getUploadForwardFinYears:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getUploadForwardList(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const { finYearId } = req.query;
+    const data = await annualIndentModel.getUploadForwardList(facilityId, finYearId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getUploadForwardList:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getCreateIndentHeader(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const { finYearId } = req.query;
+    const data = await annualIndentModel.getCreateIndentHeader(facilityId, finYearId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getCreateIndentHeader:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getCreateIndentItems(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId } = req.query;
+    const data = await annualIndentModel.getCreateIndentItems(facilityId, finYearId, indentId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getCreateIndentItems:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function updateCreateIndentItem(req, res) {
+  try {
+    const { anualIndentId, consumption, actualConsumption, projectedConsumption, currentStock, facilityIndentQty, rate } = req.body;
+    await annualIndentModel.updateCreateIndentItem(anualIndentId, consumption, actualConsumption, projectedConsumption, currentStock, facilityIndentQty, rate);
+    res.json({ success: true, message: 'Item updated successfully' });
+  } catch (error) {
+    console.error('Error in updateCreateIndentItem:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function deleteCreateIndentItem(req, res) {
+  try {
+    const { id } = req.params;
+    await annualIndentModel.deleteCreateIndentItem(id);
+    res.json({ success: true, message: 'Item deleted successfully' });
+  } catch (error) {
+    console.error('Error in deleteCreateIndentItem:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getMedicalCollegeAiDropdowns(req, res) {
+  try {
+    const data = await annualIndentModel.getMedicalCollegeAiDropdowns();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getMedicalCollegeAiDropdowns:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getMedicalCollegeAiReport(req, res) {
+  try {
+    const { finYearId, medicalCollegeId, categoryId } = req.query;
+    const data = await annualIndentModel.getMedicalCollegeAiReport(finYearId, medicalCollegeId, categoryId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getMedicalCollegeAiReport:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getMcAiVsIssuanceDropdowns(req, res) {
+  try {
+    const data = await annualIndentModel.getMcAiVsIssuanceDropdowns();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getMcAiVsIssuanceDropdowns:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getMcAiVsIssuanceReport(req, res) {
+  try {
+    const { finYearId, categoryId, facilityId } = req.query;
+    const data = await annualIndentModel.getMcAiVsIssuanceReport(finYearId, categoryId, facilityId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getMcAiVsIssuanceReport:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 module.exports = {
   getItems,
   getSummary,
   getDistributions,
   updateDistribution,
-  deleteDistribution
+  deleteDistribution,
+  getMcHospitalAiVsIssuance,
+  getDownloadAiFormatData,
+  getUploadForwardFinYears,
+  getUploadForwardList,
+  getCreateIndentHeader,
+  getCreateIndentItems,
+  updateCreateIndentItem,
+  deleteCreateIndentItem,
+  getMedicalCollegeAiDropdowns,
+  getMedicalCollegeAiReport,
+  getMcAiVsIssuanceDropdowns,
+  getMcAiVsIssuanceReport
 };

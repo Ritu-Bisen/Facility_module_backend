@@ -176,6 +176,30 @@ async function getNocBalance(nocId, itemId) {
   return await localPurchaseModel.getNocBalance(nocId, itemId);
 }
 
+async function getNocSummaryFinYears() {
+  return await localPurchaseModel.getNocSummaryFinYears();
+}
+
+async function getNocSummaryMedicalColleges() {
+  return await localPurchaseModel.getNocSummaryMedicalColleges();
+}
+
+async function getNocSummaryReport(accyrsetid, facilityId) {
+  if (!accyrsetid || !facilityId) {
+    throw new Error('Financial Year ID and Medical College Facility ID are required');
+  }
+  return await localPurchaseModel.getNocSummaryReport(accyrsetid, facilityId);
+}
+
+async function getItemCategories() {
+  return await localPurchaseModel.getItemCategories();
+}
+
+async function getPoAgainstNocReport(facilityId, categoryId, fromDate, toDate) {
+  if (!facilityId) throw new Error('Facility ID is required');
+  return await localPurchaseModel.getPoAgainstNocReport(facilityId, categoryId, fromDate, toDate);
+}
+
 module.exports = {
   getBudgets,
   getBudgetDetails,
@@ -207,5 +231,10 @@ module.exports = {
   deleteSupplyOrder,
   amendSupplyOrder,
   getNocDetails,
-  getNocBalance
+  getNocBalance,
+  getNocSummaryFinYears,
+  getNocSummaryMedicalColleges,
+  getNocSummaryReport,
+  getItemCategories,
+  getPoAgainstNocReport
 };

@@ -21,7 +21,37 @@ async function getHoldBatchesReport(facilityId, itemTypeId) {
   return data;
 }
 
+async function getCgmscDrugWiseDropdowns(facilityId) {
+  return await reportModel.getCgmscDrugWiseDropdowns(facilityId);
+}
+
+async function getItemsByCategory(categoryId) {
+  return await reportModel.getItemsByCategory(categoryId);
+}
+
+async function getCgmscReceiptDrugWise(facilityId, warehouseId, categoryId, itemId, targetFacilityId, fromDate, toDate) {
+  return await reportModel.getCgmscReceiptDrugWise(facilityId, warehouseId, categoryId, itemId, targetFacilityId, fromDate, toDate);
+}
+
+async function getCgmscReceiptBatchWise(facilityId, warehouseId, targetFacilityId, categoryId, itemId, fromDate, toDate) {
+  return await reportModel.getCgmscReceiptBatchWise(facilityId, warehouseId, targetFacilityId, categoryId, itemId, fromDate, toDate);
+}
+
+async function getDateWiseFacilityDropdowns() {
+  return await reportModel.getDateWiseFacilityDropdowns();
+}
+
+async function getDateWiseFacilityIssue(facilityId, finYearId, categoryId, fromDate, toDate) {
+  return await reportModel.getDateWiseFacilityIssue(facilityId, finYearId, categoryId, fromDate, toDate);
+}
+
 module.exports = {
   getShortExpiryReport,
-  getHoldBatchesReport
+  getHoldBatchesReport,
+  getCgmscDrugWiseDropdowns,
+  getItemsByCategory,
+  getCgmscReceiptDrugWise,
+  getCgmscReceiptBatchWise,
+  getDateWiseFacilityDropdowns,
+  getDateWiseFacilityIssue
 };

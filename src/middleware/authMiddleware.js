@@ -25,7 +25,10 @@ async function authenticate(req, res, next) {
     }
 
     const activeSessionId = await authModel.getSessionId(decoded.userId);
-    if (activeSessionId && decoded.sessionId && activeSessionId !== decoded.sessionId) {
+    if (!activeSessionId) {
+      return res.status(401).json({ success: false, message: 'Session expired or logged out. Please login again.' });
+    }
+    if (decoded.sessionId && activeSessionId !== decoded.sessionId) {
       return res.status(401).json({ success: false, message: 'Session expired because your account was logged in from another location.' });
     }
 

@@ -1,0 +1,102 @@
+[
+  {
+    "id": "ayush_dummy1",
+    "poNo": "AYUSH-LP/2026-27/0001",
+    "date": "2026-08-10",
+    "supplierId": "1",
+    "supplierName": "RIGHT MED",
+    "finYearId": "542",
+    "facilityId": "23246",
+    "status": "Incomplete",
+    "dispatchNo": "",
+    "dispatchDate": "",
+    "createdAt": "2026-08-10T12:00:00.000Z",
+    "items": [
+      {
+        "lpItemId": "7661",
+        "itemName": "Sodium Valproate",
+        "strength": "500 mg",
+        "sku": "1",
+        "type": "Tablet",
+        "packQty": "1",
+        "isEdl": "Non-EDL",
+        "qty": 100,
+        "basicRate": 15,
+        "gst": "12",
+        "unitPrice": 16.8,
+        "totalAmount": 1680
+      },
+      {
+        "lpItemId": "11552",
+        "itemName": "Borax veneta",
+        "strength": "Dilution 30",
+        "sku": "1",
+        "type": "Dilution",
+        "packQty": "1",
+        "isEdl": "Non-EDL",
+        "qty": 50,
+        "basicRate": 45,
+        "gst": "18",
+        "unitPrice": 53.1,
+        "totalAmount": 2655
+      }
+    ]
+  },
+  {
+    "id": "ayush_dummy2",
+    "poNo": "AYUSH-LP/2026-27/0002",
+    "date": "2026-08-14",
+    "supplierId": "2",
+    "supplierName": "PMB JAN AUSHADHI KENDRA",
+    "finYearId": "542",
+    "facilityId": "23246",
+    "status": "Order Placed",
+    "dispatchNo": "DISP-9988",
+    "dispatchDate": "2026-08-14",
+    "createdAt": "2026-08-14T09:30:00.000Z",
+    "items": [
+      {
+        "lpItemId": "18403",
+        "itemName": "Acriflavin",
+        "strength": "20gm",
+        "sku": "1",
+        "type": "Powder",
+        "packQty": "1",
+        "isEdl": "Non-EDL",
+        "qty": 200,
+        "basicRate": 32,
+        "gst": "5",
+        "unitPrice": 33.6,
+        "totalAmount": 6720
+      }
+    ]
+  },
+  {
+    "id": "ayush_3cixn9nhvjh",
+    "poNo": "AYUSH-LP/2026-2027/0001",
+    "date": "2026-08-14",
+    "supplierId": "4520",
+    "supplierName": "AKSH ENTERPRISES DURG",
+    "finYearId": "547",
+    "facilityId": 23393,
+    "status": "Incomplete",
+    "dispatchNo": "",
+    "dispatchDate": "",
+    "createdAt": "2026-08-14T07:24:52.107Z",
+    "items": []
+  },
+  {
+    "id": "ayush_wy7ymkzxsp",
+    "poNo": "AYUSH-LP/2026-2027/0002",
+    "date": "2026-08-14",
+    "supplierId": "4749",
+    "supplierName": "AKSH ENTERPRISESS",
+    "finYearId": "547",
+    "facilityId": 23393,
+    "status": "Incomplete",
+    "dispatchNo": "",
+    "dispatchDate": "",
+    "createdAt": "2026-08-14T07:44:53.602Z",
+    "items": []
+  }
+]

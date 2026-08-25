@@ -46,6 +46,9 @@ router.get('/against-approval-indent', ctrl.getAgainstApprovalIndentItems);
 // GET  /api/monthly-indent/other-item
 router.get('/other-item', ctrl.getOtherItem);
 
+// GET /api/monthly-indent/item-stock-details
+router.get('/item-stock-details', ctrl.getItemStockDetails);
+
 // PUT    /api/monthly-indent/items/:nocItemId
 router.put('/items/:nocItemId', ctrl.updateNocItem);
 

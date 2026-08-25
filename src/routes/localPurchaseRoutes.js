@@ -30,6 +30,9 @@ router.delete('/supply-orders/:poNoId', authenticate, localPurchaseController.de
 router.post('/supply-orders/:poNoId/amend', authenticate, localPurchaseController.amendSupplyOrder);
 router.get('/noc-details', authenticate, localPurchaseController.getNocDetails);
 router.get('/noc-balance', authenticate, localPurchaseController.getNocBalance);
+router.get('/noc-summary/financial-years', authenticate, localPurchaseController.getNocSummaryFinYears);
+router.get('/noc-summary/medical-colleges', authenticate, localPurchaseController.getNocSummaryMedicalColleges);
+router.get('/noc-summary/report', authenticate, localPurchaseController.getNocSummaryReport);
 
 // Receipts from Supplier
 router.get('/supplier-receipts', authenticate, localPurchaseController.getSupplierReceipts);
@@ -43,5 +46,9 @@ router.get('/receipts/:receiptId/batches', authenticate, localPurchaseController
 router.post('/receipts/:receiptId/batches', authenticate, localPurchaseController.saveReceiptBatch);
 router.delete('/receipts/batches/:inwNo', authenticate, localPurchaseController.deleteReceiptBatch);
 router.post('/receipts/:receiptId/complete', authenticate, localPurchaseController.completeReceipt);
+
+// PO Against NOC Report
+router.get('/po-against-noc/categories', authenticate, localPurchaseController.getPoAgainstNocCategories);
+router.get('/po-against-noc/report', authenticate, localPurchaseController.getPoAgainstNocReport);
 
 module.exports = router;

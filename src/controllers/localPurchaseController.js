@@ -380,6 +380,63 @@ async function getNocBalance(req, res) {
   }
 }
 
+async function getNocSummaryFinYears(req, res, next) {
+  try {
+    const data = await localPurchaseService.getNocSummaryFinYears();
+    res.json({ success: true, data });
+  } catch (error) {
+    logger.error('Error in getNocSummaryFinYears: ' + error.message);
+    next(error);
+  }
+}
+
+async function getNocSummaryMedicalColleges(req, res, next) {
+  try {
+    const data = await localPurchaseService.getNocSummaryMedicalColleges();
+    res.json({ success: true, data });
+  } catch (error) {
+    logger.error('Error in getNocSummaryMedicalColleges: ' + error.message);
+    next(error);
+  }
+}
+
+async function getNocSummaryReport(req, res, next) {
+  try {
+    const { accyrsetid, facilityId } = req.query;
+    if (!accyrsetid || !facilityId) {
+      return res.status(400).json({ success: false, message: 'Financial Year ID and Medical College Facility ID are required' });
+    }
+    const data = await localPurchaseService.getNocSummaryReport(accyrsetid, facilityId);
+    res.json({ success: true, data });
+  } catch (error) {
+    logger.error('Error in getNocSummaryReport: ' + error.message);
+    next(error);
+  }
+}
+
+async function getPoAgainstNocCategories(req, res, next) {
+  try {
+    const data = await localPurchaseService.getItemCategories();
+    res.json({ success: true, data });
+  } catch (error) {
+    logger.error('Error in getPoAgainstNocCategories: ' + error.message);
+    next(error);
+  }
+}
+
+async function getPoAgainstNocReport(req, res, next) {
+  try {
+    const facilityId = req.user?.facilityId || 23416;
+    const { categoryId, fromDate, toDate } = req.query;
+
+    const data = await localPurchaseService.getPoAgainstNocReport(facilityId, categoryId, fromDate, toDate);
+    res.json({ success: true, data });
+  } catch (error) {
+    logger.error('Error in getPoAgainstNocReport: ' + error.message);
+    next(error);
+  }
+}
+
 module.exports = {
   getBudgets,
   getBudgetDetails,
@@ -411,5 +468,10 @@ module.exports = {
   deleteSupplyOrder,
   amendSupplyOrder,
   getNocDetails,
-  getNocBalance
+  getNocBalance,
+  getNocSummaryFinYears,
+  getNocSummaryMedicalColleges,
+  getNocSummaryReport,
+  getPoAgainstNocCategories,
+  getPoAgainstNocReport
 };

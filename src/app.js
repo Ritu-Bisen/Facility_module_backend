@@ -5,6 +5,8 @@ const userRoutes = require('./routes/userRoutes');
 const authRoutes = require('./routes/authRoutes');
 const inFacilityTransferRoutes = require('./routes/inFacilityTransferRoutes');
 const breakageVoucherRoutes = require('./routes/breakageVoucherRoutes');
+const userLogRoutes = require('./routes/userLogRoutes');
+const { logActivityMiddleware } = require('./middleware/logMiddleware');
 const { errorHandler } = require('./middleware/errorMiddleware');
 
 const path = require('path');
@@ -13,6 +15,13 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 const app = express();
 
 app.disable('x-powered-by');
+
+// Strip technology version disclosure headers (CWE-200)
+app.use((req, res, next) => {
+  res.removeHeader('X-Powered-By');
+  res.removeHeader('Server');
+  next();
+});
 
 const helmet = require('helmet');
 
@@ -64,10 +73,14 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// Automatic logging to USERS_LOGS table for all API operations (Disabled for now)
+// app.use(logActivityMiddleware);
+
 // Routes
 app.get('/api/user', require('./controllers/userController').getTenUsers);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/user-logs', userLogRoutes);
 app.use('/api/ward-issue', require('./routes/wardIssueRoutes'));
 app.use('/api/in-facility-transfer', inFacilityTransferRoutes);
 app.use('/api/breakage-voucher', breakageVoucherRoutes);
@@ -96,12 +109,15 @@ app.use('/api/stock-register', require('./routes/stockRegisterRoutes'));
 app.use('/api/annual-indent', require('./routes/annualIndentRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/local-purchase', require('./routes/localPurchaseRoutes'));
+app.use('/api/ayush-local-purchase', require('./routes/ayushLocalPurchaseRoutes'));
 app.use('/api/contracts', require('./routes/contractRoutes'));
 app.use('/api/roles', require('./routes/roleRoutes'));
 app.use('/api/facility-access', require('./routes/facilityAccessRoutes'));
 app.use('/api/local-items', require('./routes/localItemsRoutes'));
 app.use('/api/noc-cancellation', require('./routes/nocCancellationRoutes'));
 app.use('/api/return-to-warehouse', require('./routes/returnToWarehouseRoutes'));
+app.use('/api/reagent-indent', require('./routes/reagentIndentRoutes'));
+
 // Error Handling Middleware
 app.use(errorHandler);
 

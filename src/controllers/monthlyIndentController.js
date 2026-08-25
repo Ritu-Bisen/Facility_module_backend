@@ -200,11 +200,14 @@ async function checkNocIndent(req, res) {
  */
 async function getNocItems(req, res) {
   try {
-    const { nocId } = req.params;
-    const items = await monthlyIndentModel.getNocItems(nocId);
+    const nocId = req.params.nocId;
+    const isMC = req.query.isMC === 'true';
+    const facilityId = req.user?.facilityId;
+    const items = await monthlyIndentModel.getNocItems(nocId, facilityId, isMC);
     res.json(items);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    console.error('Error fetching NOC items:', err);
+    res.status(500).json({ error: 'Failed to fetch NOC items' });
   }
 }
 
@@ -226,6 +229,23 @@ async function getFmItems(req, res) {
   }
 }
 
+
+async function getItemStockDetails(req, res) {
+  try {
+    const { facilityId } = req.user;
+    const { itemId, isMC } = req.query;
+
+    if (!facilityId || !itemId) {
+      return res.status(400).json({ message: 'Facility ID and Item ID are required.' });
+    }
+
+    const details = await monthlyIndentModel.getItemStockDetails(facilityId, itemId, isMC === 'true');
+    res.json(details);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 /**
  * POST /api/monthly-indent/:nocId/items
  * Add new items to a NOC (supports single item or array of items).
@@ -233,32 +253,26 @@ async function getFmItems(req, res) {
 async function saveNocItem(req, res) {
   try {
     const { nocId } = req.params;
+    const facilityId = req.user.facilityId;
+    const db = require('../config/db');
+    const oracledb = require('oracledb');
     
+    const facTypeQuery = `SELECT facilitytypeid FROM masfacilities WHERE facilityid = :facilityId`;
+    const facTypeRes = await db.execute(facTypeQuery, { facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const facilityTypeId = facTypeRes.rows.length > 0 ? facTypeRes.rows[0].FACILITYTYPEID : null;
+
     // Check if it's a bulk save
     if (req.body.items && Array.isArray(req.body.items)) {
+      // For bulk save, we might need to apply logic. But since MC is using single save now, we skip bulk update logic.
       const results = [];
-      const facilityId = req.user.facilityId;
       for (const item of req.body.items) {
         const nocItemId = await monthlyIndentModel.saveNocItem({
-          nocId,
-          facilityId,
-          itemId: item.itemId,
-          requestedqty: item.requestedqty,
-          whStock: item.whStock,
-          itemRemarks: item.itemRemarks,
-          whStockQcPending: item.whStockQcPending,
-          estimatedDate: item.estimatedDate,
-          whId: item.whId,
-          cgmsclRemarks: item.cgmsclRemarks,
-          otherWhStock: item.otherWhStock,
-          stockInHand: item.stockInHand,
-          itemType: item.itemType,
-          status: item.status,
-          approvedQty: item.approvedQty,
-          bookedQty: item.bookedQty,
-          bookedFlag: item.bookedFlag,
-          entry_date: item.entry_date,
-          cmhoapplieddttime: item.cmhoapplieddttime
+          nocId, facilityId, itemId: item.itemId, requestedqty: item.requestedqty,
+          whStock: item.whStock, itemRemarks: item.itemRemarks, whStockQcPending: item.whStockQcPending,
+          estimatedDate: item.estimatedDate, whId: item.whId, cgmsclRemarks: item.cgmsclRemarks,
+          otherWhStock: item.otherWhStock, stockInHand: item.stockInHand, itemType: item.itemType,
+          status: item.status, approvedQty: item.approvedQty, bookedQty: item.bookedQty,
+          bookedFlag: item.bookedFlag, entry_date: item.entry_date, cmhoapplieddttime: item.cmhoapplieddttime
         });
         results.push(nocItemId);
       }
@@ -267,23 +281,61 @@ async function saveNocItem(req, res) {
 
     // Single item save fallback
     const { 
-      itemId, requestedqty, whStock, itemRemarks,
-      whStockQcPending, estimatedDate, whId, cgmsclRemarks,
-      otherWhStock, stockInHand, itemType, status,
-      approvedQty, bookedQty, bookedFlag, entry_date, cmhoapplieddttime
+      itemId, requestedqty, itemRemarks, itemType, status, entry_date, cmhoapplieddttime
     } = req.body;
-    
-    const facilityId = req.user.facilityId;
     
     if (!itemId) {
       return res.status(400).json({ error: 'itemId is required' });
     }
-    
+
+    // Compute stock details server-side
+    const stock = await monthlyIndentModel.getItemStockDetails(facilityId, itemId);
+    let mAbsQty = parseInt(requestedqty) || 0;
+    let WHstock = stock.whStock;
+    let CheckBalIndebtQty = stock.balAiQty;
+
+    let approvedQty = 0;
+    let bookedQty = 0;
+    let cgmsclRemarks = 'null';
+
+    // 364 & 378 logic (MC Facility)
+    if (facilityTypeId == '364' || facilityTypeId == '378') {
+      if (WHstock >= mAbsQty) {
+        if (CheckBalIndebtQty >= mAbsQty) {
+          bookedQty = mAbsQty;
+        } else {
+          bookedQty = CheckBalIndebtQty;
+        }
+      } else {
+        if (CheckBalIndebtQty >= WHstock) {
+          bookedQty = WHstock;
+          const diff = CheckBalIndebtQty - WHstock;
+          approvedQty = mAbsQty > diff ? diff : mAbsQty;
+          cgmsclRemarks = 'Noc Pending For Approval';
+        } else {
+          bookedQty = CheckBalIndebtQty;
+          cgmsclRemarks = 'Noc Pending For Approval';
+        }
+      }
+    } else {
+      // Default logic for other facilities
+      if (WHstock >= mAbsQty) {
+        bookedQty = mAbsQty;
+      } else {
+        bookedQty = WHstock;
+        approvedQty = mAbsQty - WHstock;
+        cgmsclRemarks = 'Noc Pending For Approval';
+      }
+    }
+
     const nocItemId = await monthlyIndentModel.saveNocItem({
-      nocId, facilityId, itemId, requestedqty, whStock, itemRemarks,
-      whStockQcPending, estimatedDate, whId, cgmsclRemarks,
-      otherWhStock, stockInHand, itemType, status,
-      approvedQty, bookedQty, bookedFlag, entry_date, cmhoapplieddttime
+      nocId, facilityId, itemId, requestedqty, 
+      whStock: stock.whStock, itemRemarks: itemRemarks || 'null',
+      whStockQcPending: stock.qcStock, estimatedDate: stock.estDate || 'null', whId: 0, 
+      cgmsclRemarks,
+      otherWhStock: stock.otherWhStock, stockInHand: stock.facStock, itemType: itemType || 'FM-items', 
+      status: status || 'Y',
+      approvedQty, bookedQty, bookedFlag: 'null', entry_date, cmhoapplieddttime
     });
     res.status(201).json({ message: 'Item saved successfully', nocItemId });
   } catch (error) {
@@ -299,8 +351,8 @@ async function saveNocItem(req, res) {
 async function updateNocItem(req, res) {
   try {
     const { nocItemId } = req.params;
-    const { requestedqty } = req.body;
-    await monthlyIndentModel.updateNocItem({ nocItemId, requestedqty });
+    const { requestedqty, stockInHand, itemRemarks } = req.body;
+    await monthlyIndentModel.updateNocItem({ nocItemId, requestedqty, stockInHand, itemRemarks });
     res.json({ message: 'Item updated successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -405,4 +457,5 @@ module.exports = {
   getDhsIndentItems,
   getAgainstApprovalIndentItems,
   getOtherItem,
+  getItemStockDetails,
 };

@@ -100,6 +100,28 @@ async function loginWithEmail(email, password) {
     await authModel.resetFailedAttempts(user.USERID);
   }
 
+  // Multi-Factor Authentication (MFA) Enforcement (CWE-308)
+  if (process.env.ENFORCE_MFA === 'true') {
+    const otp = otpService.generateOTP();
+    await authModel.updateOTP(user.USERID, otp);
+
+    try {
+      if (user.EMAILID) {
+        await otpService.sendEmail(user.EMAILID, otp);
+      }
+    } catch (err) {
+      logger.error('Failed to send MFA OTP email: ' + err.message);
+    }
+
+    const tempToken = generateTempMfaToken({ userId: user.USERID, mfaRequired: true });
+    return {
+      success: true,
+      mfaRequired: true,
+      tempToken,
+      message: 'Password verified. An OTP has been sent to your registered email/phone for MFA verification.'
+    };
+  }
+
   // Generate a new session ID for concurrent login prevention
   const sessionId = crypto.randomUUID();
   await authModel.updateSessionId(user.USERID, sessionId);
@@ -170,6 +192,28 @@ async function loginWithPhone(phoneNo, password) {
   // Reset failed attempts upon successful login
   if (user.FAILED_ATTEMPTS > 0) {
     await authModel.resetFailedAttempts(user.USERID);
+  }
+
+  // Multi-Factor Authentication (MFA) Enforcement (CWE-308)
+  if (process.env.ENFORCE_MFA === 'true') {
+    const otp = otpService.generateOTP();
+    await authModel.updateOTP(user.USERID, otp);
+
+    try {
+      if (user.FOOTER3) {
+        await otpService.sendSMS(user.FOOTER3, otp);
+      }
+    } catch (err) {
+      logger.error('Failed to send MFA OTP SMS: ' + err.message);
+    }
+
+    const tempToken = generateTempMfaToken({ userId: user.USERID, mfaRequired: true });
+    return {
+      success: true,
+      mfaRequired: true,
+      tempToken,
+      message: 'Password verified. An OTP has been sent to your registered phone for MFA verification.'
+    };
   }
 
   // Generate a new session ID for concurrent login prevention
