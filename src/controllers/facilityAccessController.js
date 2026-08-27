@@ -54,8 +54,8 @@ async function getMyMenus(req, res, next) {
     if (req.user.emailId && req.user.emailId.toLowerCase() === 'admink@gnail.com') {
       const allModulesTree = await facilityAccessService.getNewModulesAndScreens();
       // Set canView to true for every screen
-      allModulesTree.forEach(module => {
-        module.screens.forEach(screen => {
+      (allModulesTree || []).forEach(module => {
+        (module.screens || []).forEach(screen => {
           screen.canView = true;
           screen.canAdd = true;
           screen.canEdit = true;
@@ -81,36 +81,40 @@ async function getMyMenus(req, res, next) {
       `;
       const result = await db.execute(sql, [facilityId], { outFormat: 4002 });
       if (result.rows && result.rows.length > 0) {
-        facilityType = result.rows[0].FACILITYTYPECODE;
+        const row = result.rows[0];
+        facilityType = row.FACILITYTYPECODE || row.FacilityTypeCode || row.facilitytypecode || 'PHC';
       }
     }
     
     // Get permissions tree for this facility type
-    const tree = await facilityAccessService.getPermissionsByFacility(facilityType);
+    const tree = await facilityAccessService.getPermissionsByFacility(facilityType) || [];
     
     // Get role-based permissions for this user
     const userService = require('../services/userService');
-    const roleMenus = await userService.getUserMenus(userId);
+    const roleMenus = await userService.getUserMenus(userId) || [];
     
     // Map role screens for fast lookup
     const roleScreenMap = {};
-    roleMenus.forEach(mod => {
-      mod.screens.forEach(s => {
-        roleScreenMap[s.SCREENID || s.screenid] = true;
+    (roleMenus || []).forEach(mod => {
+      (mod?.screens || mod?.SCREENS || []).forEach(s => {
+        const sid = s.SCREENID || s.ScreenID || s.screenid || s.screenId;
+        if (sid) {
+          roleScreenMap[sid] = true;
+        }
       });
     });
 
     // Check if USRFACILITYSCREENS actually has ANY rules for this facilityType
     let hasFacilityPermissions = false;
-    tree.forEach(module => {
-      module.screens.forEach(screen => {
+    (tree || []).forEach(module => {
+      (module?.screens || []).forEach(screen => {
         if (screen.canView) hasFacilityPermissions = true;
       });
     });
 
     // If NO facility permissions exist (unconfigured), fallback to ONLY Role permissions
-    tree.forEach(module => {
-      module.screens.forEach(screen => {
+    (tree || []).forEach(module => {
+      (module?.screens || []).forEach(screen => {
         if (!hasFacilityPermissions) {
            // Fallback to Role only
            if (roleScreenMap[screen.screenId]) {
@@ -121,8 +125,6 @@ async function getMyMenus(req, res, next) {
                screen.canApprove = true;
            }
         }
-        // If hasFacilityPermissions is true, we simply keep the permissions from USRFACILITYSCREENS
-        // and do not intersect with roleScreenMap, so it strictly follows facility type.
       });
     });
     

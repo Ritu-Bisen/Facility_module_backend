@@ -23,13 +23,17 @@ async function getPermissionsByFacility(facilityType) {
   
   // Map permissions to tree
   const pMap = {};
-  permissions.forEach(p => {
-    pMap[p.SCREENID] = p.OPERATIONS || '';
+  (permissions || []).forEach(p => {
+    const sid = p.SCREENID || p.ScreenID || p.screenid || p.ScreenId;
+    const ops = p.OPERATIONS || p.Operations || p.operations || '';
+    if (sid) {
+      pMap[sid] = ops;
+    }
   });
   
   // Apply permissions
-  tree.forEach(module => {
-    module.screens.forEach(screen => {
+  (tree || []).forEach(module => {
+    (module.screens || []).forEach(screen => {
       const ops = pMap[screen.screenId] || '';
       screen.canView = ops.includes('V');
       screen.canAdd = ops.includes('A');
@@ -45,8 +49,8 @@ async function getPermissionsByFacility(facilityType) {
 async function saveFacilityPermissions(facilityType, modules) {
   const permissionsToSave = [];
   
-  modules.forEach(module => {
-    module.screens.forEach(screen => {
+  (modules || []).forEach(module => {
+    (module.screens || []).forEach(screen => {
       let ops = '';
       if (screen.canView) ops += 'V';
       if (screen.canAdd) ops += 'A';
@@ -71,24 +75,27 @@ function buildMenuTree(rows) {
   const moduleMap = {};
   const modules = [];
 
-  rows.forEach(row => {
-    const modId = row.MODULEID;
+  (rows || []).forEach(row => {
+    const modId = row.MODULEID || row.ModuleID || row.moduleid || row.ModuleId;
+    if (!modId) return;
+
     if (!moduleMap[modId]) {
       moduleMap[modId] = {
         moduleId: modId,
-        moduleName: row.MODULENAME,
-        moduleNo: row.MODULENO,
+        moduleName: row.MODULENAME || row.ModuleName || row.modulename || '',
+        moduleNo: row.MODULENO || row.ModuleNo || row.moduleno || 0,
         screens: []
       };
       modules.push(moduleMap[modId]);
     }
     
-    if (row.SCREENID) {
+    const screenId = row.SCREENID || row.ScreenID || row.screenid || row.ScreenId;
+    if (screenId) {
       moduleMap[modId].screens.push({
-        screenId: row.SCREENID,
-        screenName: row.SCREENNAME,
-        screenUrl: row.SCREENURL,
-        screenNo: row.SCREENNO,
+        screenId: screenId,
+        screenName: row.SCREENNAME || row.ScreenName || row.screenname || '',
+        screenUrl: row.SCREENURL || row.ScreenURL || row.screenurl || '',
+        screenNo: row.SCREENNO || row.ScreenNo || row.screenno || 0,
         canView: false,
         canAdd: false,
         canEdit: false,
