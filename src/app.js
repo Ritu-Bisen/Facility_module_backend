@@ -46,8 +46,8 @@ app.use(
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
         "default-src": ["'self'"],
-        "script-src": ["'self'", "'unsafe-inline'"], // Note: Adjust if a nonce/hash strategy is used
-        "style-src": ["'self'", "'unsafe-inline'"],
+        "script-src": ["'self'"], // Removed 'unsafe-inline' as per STQC recommendations
+        "style-src": ["'self'"], // Removed 'unsafe-inline' as per STQC recommendations
         "img-src": ["'self'", "data:", "https:"],
         "connect-src": ["'self'", "https://dpdmis.in", "http://localhost:5173"],
         "frame-ancestors": ["'none'"],

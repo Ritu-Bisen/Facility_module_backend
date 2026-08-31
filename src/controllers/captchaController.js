@@ -1,13 +1,5 @@
 const svgCaptcha = require('svg-captcha');
 const jwt = require('jsonwebtoken');
-const path = require('path');
-
-// Load custom solid Comic Sans MS font with fallback to default font if missing/inaccessible on server
-try {
-  svgCaptcha.loadFont(path.join(__dirname, '../fonts/comic.ttf'));
-} catch (err) {
-  console.error('Failed to load custom captcha font, falling back to default font:', err.message);
-}
 
 const CAPTCHA_SECRET = process.env.JWT_SECRET || 'default_jwt_secret';
 
@@ -15,34 +7,53 @@ const CAPTCHA_SECRET = process.env.JWT_SECRET || 'default_jwt_secret';
  * Generate a new CAPTCHA and a signed token containing its text
  */
 function generateCaptcha(req, res) {
-  const captcha = svgCaptcha.create({
-    size: 5,
-    noise: 2,
-    color: true,
-    background: '#ffffff',
-    width: 220,
-    height: 60,
-    fontSize: 45
-  });
+  try {
+    const captcha = svgCaptcha.create({
+      size: 5,
+      noise: 2,
+      color: true,
+      background: '#ffffff',
+      width: 250,
+      height: 80,
+      fontSize: 60,
+      charPreset: '0123456789'
+    });
 
-  let captchaImg = captcha.data;
-  // 1. Replace fixed width and height with 100% so it scales fluidly in the browser container and doesn't get clipped
-  captchaImg = captchaImg.replace(/width="\d+" height="\d+"/, 'width="100%" height="100%"');
-  // 2. Change noise lines stroke to dark grey (initially only noise lines have stroke)
-  captchaImg = captchaImg.replace(/stroke="[^"]+"/g, 'stroke="#555555"');
-  // 3. Change text path fill and add stroke/stroke-width for bold text (target only <path fill=...)
-  captchaImg = captchaImg.replace(/<path fill="(?!none)[^"]+"/g, '<path fill="#000000" stroke="#000000" stroke-width="1.5"');
+    let captchaImg = captcha.data;
+    captchaImg = captchaImg.replace(/width="\d+" height="\d+"/, 'width="100%" height="100%"');
+    captchaImg = captchaImg.replace(/stroke="[^"]+"/g, 'stroke="#555555"');
+    captchaImg = captchaImg.replace(/<path fill="(?!none)[^"]+"/g, '<path fill="#000000" stroke="#000000" stroke-width="1.5"');
 
-  // Sign the captcha text in a JWT that expires in 5 minutes
-  const captchaToken = jwt.sign({ text: captcha.text.toLowerCase() }, CAPTCHA_SECRET, { expiresIn: '5m' });
+    const captchaToken = jwt.sign({ text: captcha.text.toLowerCase() }, CAPTCHA_SECRET, { expiresIn: '5m' });
 
-  res.status(200).json({
-    success: true,
-    data: {
-      image: captchaImg, // Modified SVG string
-      token: captchaToken
-    }
-  });
+    res.status(200).json({
+      success: true,
+      data: {
+        image: captchaImg,
+        token: captchaToken
+      }
+    });
+  } catch (err) {
+    console.error('CAPTCHA Generation Error:', err);
+    // Fallback: Generate a simple 5-digit numeric CAPTCHA directly if svg-captcha fails
+    const fallbackText = Math.floor(10000 + Math.random() * 90000).toString();
+    const fallbackSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 250 80">
+        <rect width="100%" height="100%" fill="#ffffff" />
+        <path d="M10,40 Q125,0 240,40 T10,40" fill="none" stroke="#555555" stroke-width="2" />
+        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="50" font-family="monospace" font-weight="bold" fill="#000000">${fallbackText}</text>
+      </svg>
+    `;
+    const fallbackToken = jwt.sign({ text: fallbackText }, CAPTCHA_SECRET, { expiresIn: '5m' });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        image: fallbackSvg.trim(),
+        token: fallbackToken
+      }
+    });
+  }
 }
 
 /**
