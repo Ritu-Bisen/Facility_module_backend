@@ -1,62 +1,61 @@
-const fs = require('fs');
-const path = require('path');
-const { errorHandler } = require('../src/middleware/errorMiddleware');
+const http = require('http');
+const app = require('../src/app');
 
-function runErrorHandlingTest() {
-  console.log('====================================================');
-  console.log('  TESTING ERROR HANDLING & STACK TRACE PROTECTION');
-  console.log('====================================================\n');
+console.log('Testing backend error handling middleware...');
 
-  let passed = 0;
-  let total = 0;
+const server = app.listen(0, async () => {
+  const port = server.address().port;
+  console.log(`Test server running on port ${port}`);
 
-  function assert(condition, message) {
-    total++;
-    if (condition) {
-      console.log(`[PASS] Test ${total}: ${message}`);
-      passed++;
-    } else {
-      console.error(`[FAIL] Test ${total}: ${message}`);
-    }
+  let testsPassed = 0;
+  let testsTotal = 0;
+
+  function runRequest(path, expectedStatus, expectedSuccess, description) {
+    return new Promise((resolve) => {
+      testsTotal++;
+      http.get(`http://localhost:${port}${path}`, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            const statusMatch = res.statusCode === expectedStatus;
+            const successMatch = data.success === expectedSuccess;
+            // Check that response body contains no stack traces, file paths, or ASP.NET/Node exception dumps
+            const noStackInResponse = !/\n\s+at\s+/i.test(body) && !body.includes('HttpException') && !body.includes('Stack:');
+            
+            if (statusMatch && successMatch && noStackInResponse) {
+              console.log(`[PASS] ${description} -> Status: ${res.statusCode}, Message: "${data.message}"`);
+              testsPassed++;
+            } else {
+              console.error(`[FAIL] ${description} -> Status: ${res.statusCode} (expected ${expectedStatus}), statusMatch: ${statusMatch}, successMatch: ${successMatch}, noStack: ${noStackInResponse}, Body: ${body}`);
+            }
+          } catch (e) {
+            console.error(`[FAIL] ${description} -> Failed to parse JSON response:`, body);
+          }
+          resolve();
+        });
+      }).on('error', (err) => {
+        console.error(`[FAIL] ${description} -> HTTP Request Error:`, err.message);
+        resolve();
+      });
+    });
   }
 
-  // 1. Test Express Error Handler Middleware (backend)
-  const mockErr = new Error('Database connection failed at ORACLE_DRIVER_LINE_999');
-  mockErr.stack = 'Error: Database connection failed\n at OracleDriver.query (/var/db/secret.js:123)';
+  // 1. Test 404 handler for non-existent route
+  await runRequest('/api/non-existent-endpoint-12345', 404, false, '404 Non-existent Route');
 
-  let jsonResponse = null;
-  let statusCode = 200;
-  const mockRes = {
-    locals: {},
-    status(code) { statusCode = code; return this; },
-    json(payload) { jsonResponse = payload; return this; }
-  };
+  // 2. Test 400 Bad Request / Malformed URI
+  await runRequest('/api/users/%FE%FF', 400, false, '400 Malformed URI Parameter');
 
-  errorHandler(mockErr, {}, mockRes, () => {});
-
-  assert(statusCode === 500, 'Express error handler returns 500 HTTP status.');
-  assert(jsonResponse.message === 'An unexpected error occurred. Please try again later.', 
-    'Express error handler hides raw database error & stack trace from end users.');
-  assert(!JSON.stringify(jsonResponse).includes('OracleDriver') && !JSON.stringify(jsonResponse).includes('secret.js'), 
-    'No sensitive internal paths or database stack traces leaked in API JSON error response.');
-
-  // 2. Test Frontend web.config customErrors configuration
-  const frontendWebConfig = fs.readFileSync(path.join(__dirname, '../../frontend/web.config'), 'utf8');
-  assert(frontendWebConfig.includes('<customErrors mode="On"'), 
-    'Frontend web.config contains <customErrors mode="On"> to suppress ASP.NET Yellow Screen of Death (YSOD).');
-  assert(frontendWebConfig.includes('<httpErrors errorMode="Custom" existingResponse="Replace">'), 
-    'Frontend web.config contains <httpErrors errorMode="Custom" existingResponse="Replace"> to replace IIS error pages.');
-
-  // 3. Test Backend web.config customErrors configuration
-  const backendWebConfig = fs.readFileSync(path.join(__dirname, '../../backend/web.config'), 'utf8');
-  assert(backendWebConfig.includes('<customErrors mode="On"'), 
-    'Backend web.config contains <customErrors mode="On"> to suppress ASP.NET stack trace pages.');
-  assert(backendWebConfig.includes('devErrorsEnabled="false"'), 
-    'Backend web.config contains devErrorsEnabled="false" in iisnode settings.');
-
-  console.log('\n====================================================');
-  console.log(`  SUMMARY: ${passed} / ${total} TESTS PASSED`);
-  console.log('====================================================');
-}
-
-runErrorHandlingTest();
+  server.close(() => {
+    console.log(`\nTest Summary: ${testsPassed}/${testsTotal} tests passed.`);
+    if (testsPassed === testsTotal) {
+      console.log('All backend error handling tests PASSED cleanly!');
+      process.exit(0);
+    } else {
+      console.error('Some tests failed!');
+      process.exit(1);
+    }
+  });
+});

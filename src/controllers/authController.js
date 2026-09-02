@@ -2,6 +2,7 @@ const authService = require('../services/authService');
 const logger = require('../utils/logger');
 const { verifyRefreshToken, generateTokens, verifyTempMfaToken } = require('../utils/jwtHelper');
 const { verifyCaptcha } = require('./captchaController');
+const { validateIdentifier } = require('../utils/sanitizer');
 
 /**
  * POST /api/auth/login/email
@@ -28,6 +29,11 @@ async function loginWithEmail(req, res, next) {
     }
     if (!password) {
       return res.status(400).json({ success: false, message: 'Password is required' });
+    }
+
+    const valResult = validateIdentifier(email);
+    if (!valResult.valid) {
+      return res.status(400).json({ success: false, message: valResult.message });
     }
 
     logger.info(`Login attempt with email: ${email}`);
@@ -70,6 +76,11 @@ async function loginWithPhone(req, res, next) {
     }
     if (!password) {
       return res.status(400).json({ success: false, message: 'Password is required' });
+    }
+
+    const valResult = validateIdentifier(phoneNo);
+    if (!valResult.valid) {
+      return res.status(400).json({ success: false, message: valResult.message });
     }
 
     logger.info(`Login attempt with phone: ${phoneNo}`);

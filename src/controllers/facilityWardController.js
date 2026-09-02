@@ -1,5 +1,6 @@
 const facilityWardModel = require('../models/facilityWardModel');
 const SaltedHash = require('../utils/saltedHash');
+const { validateWardInput } = require('../utils/sanitizer');
 
 exports.getWards = async (req, res, next) => {
   try {
@@ -20,8 +21,9 @@ exports.addWard = async (req, res, next) => {
     const facilityId = req.user.facilityId;
     const { WardCode, WardName, IsOPDEntry, Password } = req.body;
     
-    if (!WardCode || !WardName) {
-      return res.status(400).json({ message: 'Ward Code and Ward Name are required' });
+    const valResult = validateWardInput(WardCode, WardName);
+    if (!valResult.valid) {
+      return res.status(400).json({ message: valResult.message });
     }
 
     let pwdString = null;
@@ -30,7 +32,7 @@ exports.addWard = async (req, res, next) => {
       pwdString = `salt{${sh.salt}}hash{${sh.hash}}`;
     }
 
-    await facilityWardModel.addWard(facilityId, WardCode, WardName, IsOPDEntry, pwdString);
+    await facilityWardModel.addWard(facilityId, WardCode.trim(), WardName.trim(), IsOPDEntry, pwdString);
     res.status(201).json({ message: 'Added Successfully' });
   } catch (error) {
     next(error);
@@ -42,8 +44,9 @@ exports.updateWard = async (req, res, next) => {
     const { id } = req.params;
     const { WardCode, WardName, IsOPDEntry, Password } = req.body;
 
-    if (!WardCode || !WardName) {
-      return res.status(400).json({ message: 'Ward Code and Ward Name are required' });
+    const valResult = validateWardInput(WardCode, WardName);
+    if (!valResult.valid) {
+      return res.status(400).json({ message: valResult.message });
     }
 
     let pwdString = null;
@@ -52,7 +55,7 @@ exports.updateWard = async (req, res, next) => {
       pwdString = `salt{${sh.salt}}hash{${sh.hash}}`;
     }
 
-    await facilityWardModel.updateWard(id, WardCode, WardName, IsOPDEntry, pwdString);
+    await facilityWardModel.updateWard(id, WardCode.trim(), WardName.trim(), IsOPDEntry, pwdString);
     res.json({ message: 'Updated Successfully' });
   } catch (error) {
     next(error);

@@ -1,4 +1,5 @@
 const spLocationModel = require('../models/spLocationModel');
+const { validateNameInput } = require('../utils/sanitizer');
 
 const spLocationController = {
   getLocations: async (req, res, next) => {
@@ -20,11 +21,12 @@ const spLocationController = {
       const facilityId = req.user.facilityId;
       const { locationno } = req.body;
       
-      if (!locationno) {
-        return res.status(400).json({ message: 'Location Name is required' });
+      const valResult = validateNameInput(locationno, 'Location Name');
+      if (!valResult.valid) {
+        return res.status(400).json({ message: valResult.message });
       }
 
-      await spLocationModel.addLocation(facilityId, locationno);
+      await spLocationModel.addLocation(facilityId, locationno.trim());
       res.status(201).json({ message: 'Location added successfully' });
     } catch (error) {
       next(error);
@@ -36,11 +38,12 @@ const spLocationController = {
       const { id } = req.params;
       const { locationno } = req.body;
 
-      if (!locationno) {
-        return res.status(400).json({ message: 'Location Name is required' });
+      const valResult = validateNameInput(locationno, 'Location Name');
+      if (!valResult.valid) {
+        return res.status(400).json({ message: valResult.message });
       }
 
-      await spLocationModel.updateLocation(id, locationno);
+      await spLocationModel.updateLocation(id, locationno.trim());
       res.json({ message: 'Location updated successfully' });
     } catch (error) {
       next(error);

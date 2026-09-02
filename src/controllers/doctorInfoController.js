@@ -1,4 +1,5 @@
 const doctorInfoModel = require('../models/doctorInfoModel');
+const { validateNameInput, validatePhoneInput } = require('../utils/sanitizer');
 
 const doctorInfoController = {
   getDoctors: async (req, res, next) => {
@@ -20,11 +21,17 @@ const doctorInfoController = {
       const facilityId = req.user.facilityId;
       const { drName, mobileNo } = req.body;
       
-      if (!drName) {
-        return res.status(400).json({ message: 'Doctor Name is required' });
+      const valName = validateNameInput(drName, 'Doctor Name');
+      if (!valName.valid) {
+        return res.status(400).json({ message: valName.message });
       }
 
-      await doctorInfoModel.addDoctor(facilityId, drName, mobileNo || '');
+      const valPhone = validatePhoneInput(mobileNo);
+      if (!valPhone.valid) {
+        return res.status(400).json({ message: valPhone.message });
+      }
+
+      await doctorInfoModel.addDoctor(facilityId, drName.trim(), (mobileNo || '').trim());
       res.status(201).json({ message: 'Doctor added successfully' });
     } catch (error) {
       next(error);
@@ -37,11 +44,17 @@ const doctorInfoController = {
       const facilityId = req.user.facilityId;
       const { drName, mobileNo } = req.body;
 
-      if (!drName) {
-        return res.status(400).json({ message: 'Doctor Name is required' });
+      const valName = validateNameInput(drName, 'Doctor Name');
+      if (!valName.valid) {
+        return res.status(400).json({ message: valName.message });
       }
 
-      await doctorInfoModel.updateDoctor(drId, drName, mobileNo || '', facilityId);
+      const valPhone = validatePhoneInput(mobileNo);
+      if (!valPhone.valid) {
+        return res.status(400).json({ message: valPhone.message });
+      }
+
+      await doctorInfoModel.updateDoctor(drId, drName.trim(), (mobileNo || '').trim(), facilityId);
       res.json({ message: 'Doctor updated successfully' });
     } catch (error) {
       next(error);

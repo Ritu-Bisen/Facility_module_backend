@@ -16,10 +16,19 @@ const app = express();
 
 app.disable('x-powered-by');
 
-// Strip technology version disclosure headers (CWE-200)
+// Strip technology version disclosure headers & restrict HTTP methods (CWE-200 / Vulnerability Point No. 21)
 app.use((req, res, next) => {
   res.removeHeader('X-Powered-By');
   res.removeHeader('Server');
+  res.removeHeader('Allow');
+  res.removeHeader('Public');
+
+  // Block dangerous/unnecessary HTTP methods
+  const disallowedMethods = ['TRACE', 'TRACK', 'DEBUG'];
+  if (disallowedMethods.includes(req.method.toUpperCase())) {
+    return res.status(405).json({ success: false, message: 'Method Not Allowed' });
+  }
+
   next();
 });
 
@@ -73,6 +82,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+const sanitizeMiddleware = require('./middleware/sanitizeMiddleware');
+app.use(sanitizeMiddleware);
+
 // Automatic logging to USERS_LOGS table for all API operations (Disabled for now)
 // app.use(logActivityMiddleware);
 
@@ -117,6 +129,14 @@ app.use('/api/local-items', require('./routes/localItemsRoutes'));
 app.use('/api/noc-cancellation', require('./routes/nocCancellationRoutes'));
 app.use('/api/return-to-warehouse', require('./routes/returnToWarehouseRoutes'));
 app.use('/api/reagent-indent', require('./routes/reagentIndentRoutes'));
+
+// 404 Handler for unmatched API routes
+app.use((req, res, next) => {
+  res.status(404).json({
+    success: false,
+    message: 'Resource not found'
+  });
+});
 
 // Error Handling Middleware
 app.use(errorHandler);
