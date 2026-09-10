@@ -5,6 +5,7 @@ const warehouseReceiptController = require('../controllers/warehouseReceiptContr
 const { authenticate } = require('../middleware/authMiddleware');
 
 router.get('/indents', authenticate, warehouseReceiptController.getWarehouseIndents);
+router.post('/create', authenticate, warehouseReceiptController.createWarehouseReceipt);
 router.get('/receipts/:indentId', authenticate, warehouseReceiptController.getReceiptsByIndent);
 router.get('/fin-years', authenticate, warehouseReceiptController.getFinancialYears);
 router.get('/view/:receiptId', authenticate, warehouseReceiptController.getReceiptDetails);

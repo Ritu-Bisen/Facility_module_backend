@@ -47,7 +47,8 @@ async function execute(sql, binds = [], opts = {}) {
   let connection;
   try {
     connection = await oracledb.getConnection();
-    const result = await connection.execute(sql, binds, opts);
+    const options = { autoCommit: true, ...opts };
+    const result = await connection.execute(sql, binds, options);
     return result;
   } catch (err) {
     logger.error('Database execution error: ' + err.message);

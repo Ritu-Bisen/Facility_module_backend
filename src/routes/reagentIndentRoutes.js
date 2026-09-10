@@ -23,6 +23,9 @@ router.post('/generate-header', ctrl.generateIndentHeader);
 // GET /api/reagent-indent/facility-equipments
 router.get('/facility-equipments', ctrl.getFacilityEquipments);
 
+// GET /api/reagent-indent/saved-equipments-ddl
+router.get('/saved-equipments-ddl', ctrl.getSavedEquipmentsDdl);
+
 // GET /api/reagent-indent/make-models
 router.get('/make-models', ctrl.getMakeModels);
 
@@ -40,6 +43,9 @@ router.post('/send-otp', ctrl.sendOtp);
 
 // POST /api/reagent-indent/freeze
 router.post('/freeze', ctrl.freezeIndent);
+
+// DELETE /api/reagent-indent/item/:anualIndentId
+router.delete('/item/:anualIndentId', ctrl.deleteReagentItem);
 
 // DELETE /api/reagent-indent/delete/:indentId
 router.delete('/delete/:indentId', ctrl.deleteIndent);

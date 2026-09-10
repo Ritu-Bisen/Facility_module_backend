@@ -185,6 +185,26 @@ async function completeReceipt(req, res) {
     }
 }
 
+async function createWarehouseReceipt(req, res) {
+    try {
+        const facilityId = req.user?.facilityId || 1;
+        const { indentId } = req.body;
+
+        if (!indentId) {
+            return res.status(400).json({ success: false, message: 'Indent ID is required' });
+        }
+
+        const result = await warehouseReceiptModel.createWarehouseReceipt(facilityId, indentId);
+        res.json(result);
+    } catch (error) {
+        console.error('Error in createWarehouseReceipt:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to create warehouse receipt'
+        });
+    }
+}
+
 module.exports = {
     getWarehouseIndents,
     getReceiptsByIndent,
@@ -194,5 +214,6 @@ module.exports = {
     saveReceiptItem,
     getReceiptBatches,
     addBatch,
-    completeReceipt
+    completeReceipt,
+    createWarehouseReceipt
 };

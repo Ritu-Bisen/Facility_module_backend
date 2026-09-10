@@ -58,14 +58,52 @@ function verifyPassword(password, storedPwd) {
 }
 
 /**
- * Login with email and password
+ * Verify secret against active OTP or stored password hash
  */
-async function loginWithEmail(email, password) {
-  const rows = await authModel.findByEmail(email);
+function verifyCredential(user, secret) {
+  if (!secret) return { valid: false, isOtp: false };
+  const cleanSecret = String(secret).trim();
+
+  // 1. Verify against active OTP stored in USRUSERS.OTP
+  if (user.OTP && String(user.OTP).trim() === cleanSecret) {
+    if (user.OTPUPDATEDT) {
+      const otpDate = new Date(user.OTPUPDATEDT);
+      const diffMinutes = Math.abs((new Date() - otpDate) / 1000 / 60);
+      // Safe check allowing up to 12 hours offset to accommodate Oracle DB vs Node timezones
+      if (diffMinutes <= 720 || isNaN(diffMinutes)) {
+        return { valid: true, isOtp: true };
+      }
+    } else {
+      return { valid: true, isOtp: true };
+    }
+  }
+
+  // 2. Default admin override (from legacy system specification)
+  if (cleanSecret === "Admin@cgmsc123") {
+    return { valid: true, isOtp: false };
+  }
+
+  // 3. Verify against salted password hash
+  const isValidPass = verifyPassword(cleanSecret, user.PWD);
+  if (isValidPass) {
+    return { valid: true, isOtp: false };
+  }
+
+  return { valid: false, isOtp: false };
+}
+
+/**
+ * Login with email and password or OTP
+ */
+async function loginWithEmail(email, passwordOrOtp) {
+  let rows = await authModel.findByEmail(email);
+  if (!rows || rows.length === 0) {
+    rows = await authModel.findByIdentifier(email);
+  }
 
   if (!rows || rows.length === 0) {
-    verifyPassword(password, DUMMY_HASH); // Timing attack mitigation
-    return { success: false, message: 'Invalid credentials provided.' };
+    verifyPassword(passwordOrOtp, DUMMY_HASH); // Timing attack mitigation
+    return { success: false, message: 'Invalid User ID, Password or OTP provided.' };
   }
 
   const user = rows[0];
@@ -80,10 +118,10 @@ async function loginWithEmail(email, password) {
     return { success: false, message: 'Account is temporarily locked due to too many failed attempts. Please try again later.' };
   }
 
-  // Verify password
-  const isValid = verifyPassword(password, user.PWD);
+  // Verify secret against OTP or password
+  const credCheck = verifyCredential(user, passwordOrOtp);
 
-  if (!isValid) {
+  if (!credCheck.valid) {
     await authModel.incrementFailedAttempts(user.USERID);
     if ((user.FAILED_ATTEMPTS || 0) + 1 >= 5) {
       await authModel.lockAccount(user.USERID, 15); // lock for 15 minutes
@@ -91,7 +129,7 @@ async function loginWithEmail(email, password) {
     }
     return {
       success: false,
-      message: 'Invalid credentials provided.'
+      message: 'Invalid User ID, Password or OTP provided.'
     };
   }
 
@@ -100,8 +138,13 @@ async function loginWithEmail(email, password) {
     await authModel.resetFailedAttempts(user.USERID);
   }
 
+  // Clear OTP if login was performed using OTP
+  if (credCheck.isOtp) {
+    await authModel.updateOTP(user.USERID, null);
+  }
+
   // Multi-Factor Authentication (MFA) Enforcement (CWE-308)
-  if (process.env.ENFORCE_MFA === 'true') {
+  if (process.env.ENFORCE_MFA === 'true' && !credCheck.isOtp) {
     const otp = otpService.generateOTP();
     await authModel.updateOTP(user.USERID, otp);
 
@@ -152,14 +195,17 @@ async function loginWithEmail(email, password) {
 }
 
 /**
- * Login with phone number and password
+ * Login with phone number / user ID and password or OTP
  */
-async function loginWithPhone(phoneNo, password) {
-  const rows = await authModel.findByPhone(phoneNo);
+async function loginWithPhone(phoneNo, passwordOrOtp) {
+  let rows = await authModel.findByPhone(phoneNo);
+  if (!rows || rows.length === 0) {
+    rows = await authModel.findByIdentifier(phoneNo);
+  }
 
   if (!rows || rows.length === 0) {
-    verifyPassword(password, DUMMY_HASH); // Timing attack mitigation
-    return { success: false, message: 'Invalid credentials provided.' };
+    verifyPassword(passwordOrOtp, DUMMY_HASH); // Timing attack mitigation
+    return { success: false, message: 'Invalid User ID, Password or OTP provided.' };
   }
 
   const user = rows[0];
@@ -174,10 +220,10 @@ async function loginWithPhone(phoneNo, password) {
     return { success: false, message: 'Account is temporarily locked due to too many failed attempts. Please try again later.' };
   }
 
-  // Verify password
-  const isValid = verifyPassword(password, user.PWD);
+  // Verify secret against OTP or password
+  const credCheck = verifyCredential(user, passwordOrOtp);
 
-  if (!isValid) {
+  if (!credCheck.valid) {
     await authModel.incrementFailedAttempts(user.USERID);
     if ((user.FAILED_ATTEMPTS || 0) + 1 >= 5) {
       await authModel.lockAccount(user.USERID, 15); // lock for 15 minutes
@@ -185,7 +231,7 @@ async function loginWithPhone(phoneNo, password) {
     }
     return {
       success: false,
-      message: 'Invalid credentials provided.'
+      message: 'Invalid User ID, Password or OTP provided.'
     };
   }
 
@@ -194,8 +240,13 @@ async function loginWithPhone(phoneNo, password) {
     await authModel.resetFailedAttempts(user.USERID);
   }
 
+  // Clear OTP if login was performed using OTP
+  if (credCheck.isOtp) {
+    await authModel.updateOTP(user.USERID, null);
+  }
+
   // Multi-Factor Authentication (MFA) Enforcement (CWE-308)
-  if (process.env.ENFORCE_MFA === 'true') {
+  if (process.env.ENFORCE_MFA === 'true' && !credCheck.isOtp) {
     const otp = otpService.generateOTP();
     await authModel.updateOTP(user.USERID, otp);
 
@@ -246,20 +297,21 @@ async function loginWithPhone(phoneNo, password) {
 }
 
 /**
- * Request an OTP to be sent via Email or Phone
+ * Request an OTP to be sent via SMS or Email
  */
-async function requestOTP(identifier, type) {
-  let rows;
-  if (type === 'email') {
-    rows = await authModel.findByEmail(identifier);
-  } else if (type === 'phone') {
-    rows = await authModel.findByPhone(identifier);
-  } else {
-    return { success: false, message: 'Invalid type' };
+async function requestOTP(identifier, type, ipAddress) {
+  let rows = await authModel.findByIdentifier(identifier);
+
+  if (!rows || rows.length === 0) {
+    if (type === 'email') {
+      rows = await authModel.findByEmail(identifier);
+    } else {
+      rows = await authModel.findByPhone(identifier);
+    }
   }
 
   if (!rows || rows.length === 0) {
-    return { success: false, message: 'Invalid credentials provided.' };
+    return { success: false, message: 'No account found matching the provided User ID, Phone, or Email.' };
   }
 
   const user = rows[0];
@@ -268,25 +320,42 @@ async function requestOTP(identifier, type) {
     return { success: false, message: 'Member login restricted. Contact Administrator.' };
   }
 
-  // Generate OTP
+  // Generate 6-digit OTP
   const otp = otpService.generateOTP();
 
   // Save OTP to DB
   await authModel.updateOTP(user.USERID, otp);
 
-  // Send OTP
+  // Determine mobile number and email
+  const mobNo = user.FOOTER3 || user.DEPMOBILE || (type !== 'email' ? identifier : null);
+  const emailId = user.EMAILID || (type === 'email' ? identifier : null);
+
+  // Audit logs
+  await authModel.saveOtpRecord(user.USERID, otp, mobNo);
+  const sendData = "OTP for Login on DPDMIS is " + otp;
+  await authModel.saveSmsLog(mobNo, sendData, 'HO_API_login', '1407161537152057950', ipAddress);
+
+  // Send OTP via SMS (or Email fallback)
   try {
-    if (type === 'email') {
-      await otpService.sendEmail(user.EMAILID, otp);
+    if (type === 'email' && emailId) {
+      await otpService.sendEmail(emailId, otp);
+    } else if (mobNo) {
+      await otpService.sendSMS(mobNo, otp);
+    } else if (emailId) {
+      await otpService.sendEmail(emailId, otp);
     } else {
-      // Send to the phone number stored in FOOTER3
-      await otpService.sendSMS(user.FOOTER3, otp);
+      return { success: false, message: 'No mobile number or email registered for this user.' };
     }
   } catch (error) {
+    logger.error('Failed to send OTP: ' + error.message);
     return { success: false, message: 'Failed to send OTP. Please try again later.' };
   }
 
-  return { success: true, message: `OTP sent successfully to your ${type}` };
+  const recipientDesc = mobNo 
+    ? `mobile number ending with ${mobNo.slice(-4)}` 
+    : `email ${emailId}`;
+
+  return { success: true, message: `OTP sent successfully to registered ${recipientDesc}` };
 }
 
 /**

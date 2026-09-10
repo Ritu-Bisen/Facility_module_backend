@@ -40,6 +40,60 @@ async function findByPhone(phoneNo) {
 }
 
 /**
+ * Find user by Email, Phone Number (FOOTER3 / DEPMOBILE), or User ID
+ */
+async function findByIdentifier(identifier) {
+  const cleanId = String(identifier).trim();
+  const sql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
+                      u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
+                      u.FAILED_ATTEMPTS, u.LOCKOUT_UNTIL,
+                      f.FOOTER1, f.FOOTER2, f.FOOTER3,
+                      r.ROLENAME
+               FROM USRUSERS u
+               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = u.USERID
+               LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
+               WHERE UPPER(u.EMAILID) = UPPER(:cleanId)
+                  OR f.FOOTER3 = :cleanId
+                  OR u.DEPMOBILE = :cleanId
+                  OR TO_CHAR(u.USERID) = :cleanId`;
+
+  const result = await db.execute(sql, { cleanId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+  return result.rows;
+}
+
+/**
+ * Save OTP Record into OTPRECORD table
+ */
+async function saveOtpRecord(userId, otp, mobNo) {
+  try {
+    const sql = `INSERT INTO OTPRECORD (UPDATEDT, OTP, MOB, USERID, ENTRYDATE, ISLOGIN) 
+                 VALUES (SYSDATE, :otp, :mobNo, :userId, SYSDATE, 'Y')`;
+    await db.execute(sql, { otp, mobNo: String(mobNo || ''), userId }, { autoCommit: true });
+  } catch (err) {
+    // Graceful fallback if table structure or table does not exist
+  }
+}
+
+/**
+ * Save SMS log entry into SMSLOG table
+ */
+async function saveSmsLog(mobNo, smsMessage, module, templateId, ipAddress) {
+  try {
+    const sql = `INSERT INTO SMSLOG (MOBNO, SMS, ENTRYDATE, MODULE, TEMPLATEID, IPADDRESS) 
+                 VALUES (:mobNo, :smsMessage, SYSDATE, :module, :templateId, :ipAddress)`;
+    await db.execute(sql, { 
+      mobNo: String(mobNo || ''), 
+      smsMessage, 
+      module: module || 'HO_API_login', 
+      templateId: templateId || '1407161537152057950', 
+      ipAddress: ipAddress || '127.0.0.1' 
+    }, { autoCommit: true });
+  } catch (err) {
+    // Graceful fallback if table structure or table does not exist
+  }
+}
+
+/**
  * Update the OTP and OTPUPDATEDT for a user
  */
 async function updateOTP(userId, otp) {
@@ -112,6 +166,9 @@ async function getSessionId(userId) {
 module.exports = {
   findByEmail,
   findByPhone,
+  findByIdentifier,
+  saveOtpRecord,
+  saveSmsLog,
   updateOTP,
   findUserById,
   findFullUserById,

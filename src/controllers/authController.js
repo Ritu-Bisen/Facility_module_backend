@@ -17,6 +17,10 @@ async function loginWithEmail(req, res, next) {
       return res.status(400).json({ success: false, message: 'CAPTCHA is required' });
     }
 
+    if (captchaValue && typeof captchaValue === 'string' && captchaValue.length > 20) {
+      return res.status(400).json({ success: false, message: 'CAPTCHA value cannot exceed 20 characters' });
+    }
+
     if (!verifyCaptcha(captchaToken, captchaValue)) {
       return res.status(400).json({ success: false, message: 'Invalid or expired CAPTCHA' });
     }
@@ -29,6 +33,13 @@ async function loginWithEmail(req, res, next) {
     }
     if (!password) {
       return res.status(400).json({ success: false, message: 'Password is required' });
+    }
+
+    if (email && typeof email === 'string' && email.length > 100) {
+      return res.status(400).json({ success: false, message: 'Email length cannot exceed 100 characters' });
+    }
+    if (password && typeof password === 'string' && password.length > 128) {
+      return res.status(400).json({ success: false, message: 'Password length cannot exceed 128 characters' });
     }
 
     const valResult = validateIdentifier(email);
@@ -64,6 +75,10 @@ async function loginWithPhone(req, res, next) {
       return res.status(400).json({ success: false, message: 'CAPTCHA is required' });
     }
 
+    if (captchaValue && typeof captchaValue === 'string' && captchaValue.length > 20) {
+      return res.status(400).json({ success: false, message: 'CAPTCHA value cannot exceed 20 characters' });
+    }
+
     if (!verifyCaptcha(captchaToken, captchaValue)) {
       return res.status(400).json({ success: false, message: 'Invalid or expired CAPTCHA' });
     }
@@ -76,6 +91,13 @@ async function loginWithPhone(req, res, next) {
     }
     if (!password) {
       return res.status(400).json({ success: false, message: 'Password is required' });
+    }
+
+    if (phoneNo && typeof phoneNo === 'string' && phoneNo.length > 50) {
+      return res.status(400).json({ success: false, message: 'Phone number length cannot exceed 50 characters' });
+    }
+    if (password && typeof password === 'string' && password.length > 128) {
+      return res.status(400).json({ success: false, message: 'Password length cannot exceed 128 characters' });
     }
 
     const valResult = validateIdentifier(phoneNo);
@@ -101,22 +123,25 @@ async function loginWithPhone(req, res, next) {
 /**
  * POST /api/auth/otp/send
  * Request an OTP
- * Body: { type: 'email' | 'phone', identifier: 'chctilda@dpdmis.in' | '9876543210' }
+ * Body: { identifier: string, type?: 'email' | 'phone' }
  */
 async function sendOTP(req, res, next) {
   try {
     const { type, identifier } = req.body;
     
-    if (!type || !identifier) {
-      return res.status(400).json({ success: false, message: 'Type (email/phone) and identifier are required' });
+    if (!identifier || typeof identifier !== 'string' || !identifier.trim()) {
+      return res.status(400).json({ success: false, message: 'User ID or Phone Number is required' });
     }
 
-    if (type !== 'email' && type !== 'phone') {
-      return res.status(400).json({ success: false, message: 'Type must be either email or phone' });
+    const cleanId = identifier.trim();
+    const valResult = validateIdentifier(cleanId);
+    if (!valResult.valid) {
+      return res.status(400).json({ success: false, message: valResult.message });
     }
 
-    logger.info(`Requesting OTP for ${type}: ${identifier}`);
-    const result = await authService.requestOTP(identifier, type);
+    const ipAddress = req.ip || req.connection?.remoteAddress || '127.0.0.1';
+    logger.info(`Requesting OTP for identifier: ${cleanId}`);
+    const result = await authService.requestOTP(cleanId, type || 'phone', ipAddress);
 
     if (!result.success) {
       return res.status(400).json(result);
@@ -263,16 +288,18 @@ async function changePassword(req, res, next) {
 
 async function logout(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userId = req.user?.userId;
+    const ipAddress = req.ip || req.connection?.remoteAddress;
     
-    logger.info(`Logout attempt for user: ${userId}`);
-    const result = await authService.logout(userId, ipAddress);
+    if (userId) {
+      logger.info(`Logout attempt for user: ${userId}`);
+      await authService.logout(userId, ipAddress);
+    }
     
-    return res.status(200).json(result);
+    return res.status(200).json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
     logger.error('Logout error: ' + error.message);
-    next(error);
+    return res.status(200).json({ success: true, message: 'Logged out' });
   }
 }
 

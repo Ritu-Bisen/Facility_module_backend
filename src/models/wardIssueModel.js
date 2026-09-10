@@ -273,6 +273,29 @@ async function addIssueItem(data) {
     return result.outBinds.issueItemId[0];
 }
 
+async function getIssueItemById(issueItemId) {
+    if (!issueItemId) return null;
+    const query = `
+        SELECT IssueItemID, IssueID, ItemID, CurrentStock, Allotted, IssueQty 
+        FROM tbFacilityIssueItems 
+        WHERE IssueItemID = :issueItemId
+    `;
+    try {
+        const result = await db.execute(query, { issueItemId }, { outFormat: require('oracledb').OUT_FORMAT_OBJECT });
+        if (result.rows && result.rows.length > 0) {
+            const row = result.rows[0];
+            return {
+                issueItemId: row.ISSUEITEMID || row.issueItemId,
+                issueQty: parseFloat(row.ISSUEQTY || row.issueQty || 0),
+                curStock: parseFloat(row.CURRENTSTOCK || row.curStock || 0)
+            };
+        }
+    } catch (e) {
+        console.error("Error getting issue item by id:", e);
+    }
+    return null;
+}
+
 async function updateIssueItem(data) {
     const query = `
         Update tbFacilityIssueItems 
@@ -459,6 +482,7 @@ module.exports = {
     getIssueItems,
     checkDuplicateItem,
     addIssueItem,
+    getIssueItemById,
     updateIssueItem,
     deleteIssueItem,
     completeIssue,

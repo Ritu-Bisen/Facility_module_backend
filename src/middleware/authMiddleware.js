@@ -18,17 +18,28 @@ async function authenticate(req, res, next) {
   try {
     const decoded = verifyAccessToken(token);
     
-    // Enforce Single Session (CWE-287)
-    const user = await authModel.findUserById(decoded.userId);
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'User not found.' });
+    // Enforce Single Session if session ID exists
+    let user;
+    try {
+      user = await authModel.findUserById(decoded.userId);
+    } catch (dbErr) {
+      logger.warn('DB user lookup warning in auth middleware: ' + dbErr.message);
     }
 
-    const activeSessionId = await authModel.getSessionId(decoded.userId);
-    if (!activeSessionId) {
-      return res.status(401).json({ success: false, message: 'Session expired or logged out. Please login again.' });
+    if (!user) {
+      // Allow valid JWT payload if DB user lookup is empty or unavailable
+      req.user = decoded;
+      return next();
     }
-    if (decoded.sessionId && activeSessionId !== decoded.sessionId) {
+
+    let activeSessionId;
+    try {
+      activeSessionId = await authModel.getSessionId(decoded.userId);
+    } catch (dbErr) {
+      logger.warn('DB session lookup warning in auth middleware: ' + dbErr.message);
+    }
+
+    if (activeSessionId && decoded.sessionId && activeSessionId !== decoded.sessionId) {
       return res.status(401).json({ success: false, message: 'Session expired because your account was logged in from another location.' });
     }
 

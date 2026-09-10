@@ -47,7 +47,7 @@ async function getNocList(facilityId, accYrSetId, status) {
       ${yearClause}
       AND a.FACILITYID = :facilityId
       ${statusClause}
-    ORDER BY a.NOCDATE
+    ORDER BY a.NOCDATE DESC, a.NOCID DESC
   `;
 
   const result = await db.execute(query, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT });
@@ -625,7 +625,8 @@ async function getFmItemsForFacility(facilityId, itemType, categoryId = 1) {
            UQQTY*nvl(UNITCOUNT,1) as UQCStockWHNos,
            IWHPIPQTY*nvl(UNITCOUNT,1) as IWHPiplineStockNos,
            CGMSCFM, GROUPNAME, ITEMTYPENAME, e.edlcat, l.RECEIPTDATEWH, l.QCPASSEDDT,
-           nvl(facstock.itemstock,0) as FACILITYSTOCK
+           nvl(facstock.itemstock,0) as FACILITYSTOCK,
+           nvl(bal.BalanceAIQTYNOS, 0) as BALANCEAIQTYNOS
     FROM V_WH_CURRENTSTOCK_STOCKSTATUS_Live l
     LEFT OUTER JOIN masedl e ON e.edl = l.edl
     LEFT OUTER JOIN
@@ -696,6 +697,29 @@ async function getFmItemsForFacility(facilityId, itemType, categoryId = 1) {
         group by itemid
     ) facstock
         on facstock.itemid=l.itemid
+    left outer join
+    (
+        select a.itemid,
+               case when (sum(nvl(a.CMHODISTQTY,0)) - nvl(iss.IssuedQTYNos,0)) > 0 
+                    then (sum(nvl(a.CMHODISTQTY,0)) - nvl(iss.IssuedQTYNos,0)) 
+                    else 0 end as BalanceAIQTYNOS
+        from anualindent a 
+        inner join masaccyearsettings yr on yr.accyrsetid = a.accyrsetid
+        left outer join (
+            select tbi.itemid, sum((tbo.issueqty + nvl(tbo.reconcile_qty,0)) * nvl(m.unitcount,1)) as IssuedQTYNos
+            from tbindents tb
+            inner join tbindentitems tbi on tbi.indentid = tb.indentid
+            inner join masitems m on m.itemid = tbi.itemid
+            inner join tboutwards tbo on tbo.indentitemid = tbi.indentitemid
+            inner join masaccyearsettings ay on tb.INDENTDATE between ay.startdate and ay.enddate
+            where tb.issuetype = 'NO' and sysdate between ay.startdate and ay.enddate
+              and tb.status = 'C' and tb.facilityid = :facilityId
+            group by tbi.itemid
+        ) iss on iss.itemid = a.itemid
+        where a.status = 'C' and a.facilityid = :facilityId
+          and sysdate between yr.startdate and yr.enddate
+        group by a.itemid, iss.IssuedQTYNos
+    ) bal on bal.itemid = l.itemid
     WHERE (l.MCID = :categoryId OR :categoryId IS NULL OR :categoryId = 0 OR :categoryId = '0') 
       AND WAREHOUSEID = 2617 
       AND CGMSCFM = :itemType
@@ -737,7 +761,8 @@ select WAREHOUSENAME,WAREHOUSEID,MCATEGORY,MCID,EDLTYPE,PROGRAM,PROGRAMITEMS,AIS
        ITEMTYPENAME,
        ABCCATEGORY,
        VEDCATEGORY,
-       nvl(facstock.itemstock,0) as FACILITYSTOCK
+       nvl(facstock.itemstock,0) as FACILITYSTOCK,
+       nvl(bal.BalanceAIQTYNOS, 0) as BALANCEAIQTYNOS
 from V_WH_CURRENTSTOCK_STOCKSTATUS_Live l
 left outer join masedl e
     on e.edl=l.edl
@@ -810,6 +835,29 @@ left outer join
     group by itemid
 ) facstock
     on facstock.itemid=l.itemid
+left outer join
+(
+    select a.itemid,
+           case when (sum(nvl(a.CMHODISTQTY,0)) - nvl(iss.IssuedQTYNos,0)) > 0 
+                then (sum(nvl(a.CMHODISTQTY,0)) - nvl(iss.IssuedQTYNos,0)) 
+                else 0 end as BalanceAIQTYNOS
+    from anualindent a 
+    inner join masaccyearsettings yr on yr.accyrsetid = a.accyrsetid
+    left outer join (
+        select tbi.itemid, sum((tbo.issueqty + nvl(tbo.reconcile_qty,0)) * nvl(m.unitcount,1)) as IssuedQTYNos
+        from tbindents tb
+        inner join tbindentitems tbi on tbi.indentid = tb.indentid
+        inner join masitems m on m.itemid = tbi.itemid
+        inner join tboutwards tbo on tbo.indentitemid = tbi.indentitemid
+        inner join masaccyearsettings ay on tb.INDENTDATE between ay.startdate and ay.enddate
+        where tb.issuetype = 'NO' and sysdate between ay.startdate and ay.enddate
+          and tb.status = 'C' and tb.facilityid = :facilityId
+        group by tbi.itemid
+    ) iss on iss.itemid = a.itemid
+    where a.status = 'C' and a.facilityid = :facilityId
+      and sysdate between yr.startdate and yr.enddate
+    group by a.itemid, iss.IssuedQTYNos
+) bal on bal.itemid = l.itemid
 
 where (l.MCID = :categoryId OR :categoryId IS NULL OR :categoryId = 0 OR :categoryId = '0')
 
@@ -863,7 +911,8 @@ select
     ITEMTYPENAME,
     ABCCATEGORY,
     VEDCATEGORY,
-    nvl(facstock.itemstock,0) as FACILITYSTOCK
+    nvl(facstock.itemstock,0) as FACILITYSTOCK,
+    nvl(bal.BalanceAIQTYNOS, 0) as BALANCEAIQTYNOS
 from V_WH_CURRENTSTOCK_STOCKSTATUS_Live l
 
 left outer join masedl e
@@ -955,6 +1004,30 @@ left outer join
 ) facstock
     on facstock.itemid = l.itemid
 
+left outer join
+(
+    select a.itemid,
+           case when (sum(nvl(a.CMHODISTQTY,0)) - nvl(iss.IssuedQTYNos,0)) > 0 
+                then (sum(nvl(a.CMHODISTQTY,0)) - nvl(iss.IssuedQTYNos,0)) 
+                else 0 end as BalanceAIQTYNOS
+    from anualindent a 
+    inner join masaccyearsettings yr on yr.accyrsetid = a.accyrsetid
+    left outer join (
+        select tbi.itemid, sum((tbo.issueqty + nvl(tbo.reconcile_qty,0)) * nvl(m.unitcount,1)) as IssuedQTYNos
+        from tbindents tb
+        inner join tbindentitems tbi on tbi.indentid = tb.indentid
+        inner join masitems m on m.itemid = tbi.itemid
+        inner join tboutwards tbo on tbo.indentitemid = tbi.indentitemid
+        inner join masaccyearsettings ay on tb.INDENTDATE between ay.startdate and ay.enddate
+        where tb.issuetype = 'NO' and sysdate between ay.startdate and ay.enddate
+          and tb.status = 'C' and tb.facilityid = :facilityId
+        group by tbi.itemid
+    ) iss on iss.itemid = a.itemid
+    where a.status = 'C' and a.facilityid = :facilityId
+      and sysdate between yr.startdate and yr.enddate
+    group by a.itemid, iss.IssuedQTYNos
+) bal on bal.itemid = l.itemid
+
 where (l.MCID = :categoryId OR :categoryId IS NULL OR :categoryId = 0 OR :categoryId = '0')
   and WAREHOUSEID in
 (
@@ -1019,7 +1092,8 @@ async function getOtherItemForFacility(facilityId, itemCode) {
         ITEMTYPENAME,
         ABCCATEGORY,
         VEDCATEGORY,
-        nvl(facstock.itemstock,0) as FACILITYSTOCK
+        nvl(facstock.itemstock,0) as FACILITYSTOCK,
+        nvl(bal.BalanceAIQTYNOS, 0) as BALANCEAIQTYNOS
     from V_WH_CURRENTSTOCK_STOCKSTATUS_Live l
     left outer join masedl e
         on e.edl = l.edl
@@ -1093,6 +1167,29 @@ async function getOtherItemForFacility(facilityId, itemCode) {
         group by itemid
     ) facstock
         on facstock.itemid = l.itemid
+    left outer join
+    (
+        select a.itemid,
+               case when (sum(nvl(a.CMHODISTQTY,0)) - nvl(iss.IssuedQTYNos,0)) > 0 
+                    then (sum(nvl(a.CMHODISTQTY,0)) - nvl(iss.IssuedQTYNos,0)) 
+                    else 0 end as BalanceAIQTYNOS
+        from anualindent a 
+        inner join masaccyearsettings yr on yr.accyrsetid = a.accyrsetid
+        left outer join (
+            select tbi.itemid, sum((tbo.issueqty + nvl(tbo.reconcile_qty,0)) * nvl(m.unitcount,1)) as IssuedQTYNos
+            from tbindents tb
+            inner join tbindentitems tbi on tbi.indentid = tb.indentid
+            inner join masitems m on m.itemid = tbi.itemid
+            inner join tboutwards tbo on tbo.indentitemid = tbi.indentitemid
+            inner join masaccyearsettings ay on tb.INDENTDATE between ay.startdate and ay.enddate
+            where tb.issuetype = 'NO' and sysdate between ay.startdate and ay.enddate
+              and tb.status = 'C' and tb.facilityid = :facilityId
+            group by tbi.itemid
+        ) iss on iss.itemid = a.itemid
+        where a.status = 'C' and a.facilityid = :facilityId
+          and sysdate between yr.startdate and yr.enddate
+        group by a.itemid, iss.IssuedQTYNos
+    ) bal on bal.itemid = l.itemid
     where mcid = 1
       and warehouseid = 2617
       and itemcode = :itemCode

@@ -12,10 +12,13 @@ router.use(noCache);
 // CAPTCHA endpoint
 router.use('/captcha', captchaRoutes);
 
-// POST /api/auth/login/email - Step 1: Login with email and password
+// POST /api/auth/otp/send - Generate and send OTP
+router.post('/otp/send', otpRateLimiter, authController.sendOTP);
+
+// POST /api/auth/login/email - Step 1: Login with email and password or OTP
 router.post('/login/email', loginRateLimiter, authController.loginWithEmail);
 
-// POST /api/auth/login/phone - Step 1: Login with phone number and password
+// POST /api/auth/login/phone - Step 1: Login with phone number/User ID and password or OTP
 router.post('/login/phone', loginRateLimiter, authController.loginWithPhone);
 
 // POST /api/auth/login/mfa - Step 2: Verify MFA OTP and Login (CWE-308)
@@ -28,6 +31,6 @@ router.post('/refresh', authController.refreshToken);
 router.post('/change-password', authenticate, authController.changePassword);
 
 // POST /api/auth/logout - Logout user
-router.post('/logout', authenticate, authController.logout);
+router.post('/logout', authController.logout);
 
 module.exports = router;

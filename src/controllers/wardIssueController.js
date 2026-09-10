@@ -130,11 +130,25 @@ async function saveIssueItem(req, res) {
             }
         }
 
-        if (parseFloat(data.allotted) > parseFloat(data.curStock)) {
-            return res.status(400).json({ error: "Requested Qty cannot be greater than Stock" });
+        const curStockVal = parseFloat(data.curStock || 0);
+        const allottedVal = parseFloat(data.allotted || 0);
+        const issueQtyVal = parseFloat(data.issueQty || 0);
+
+        let existingIssueQty = 0;
+        if (data.issueItemId && data.issueItemId != 0) {
+            const existingItem = await wardIssueModel.getIssueItemById(data.issueItemId);
+            if (existingItem) {
+                existingIssueQty = parseFloat(existingItem.issueQty || 0);
+            }
         }
 
-        if (parseFloat(data.issueQty) > parseFloat(data.allotted)) {
+        const totalAvailableStock = curStockVal + existingIssueQty;
+
+        if (issueQtyVal > totalAvailableStock) {
+            return res.status(400).json({ error: `Issue Qty cannot be greater than Available Stock (${totalAvailableStock})` });
+        }
+
+        if (allottedVal > 0 && issueQtyVal > allottedVal) {
             return res.status(400).json({ error: "Issue Qty cannot be greater than Requested Qty" });
         }
 
@@ -167,11 +181,25 @@ async function updateIssueItem(req, res) {
             return res.status(400).json({ error: `Enter Quantity Should be Multiple of ${multiple}` });
         }
 
-        if (parseFloat(data.allotted) > parseFloat(data.curStock)) {
-            return res.status(400).json({ error: "Requested Qty cannot be greater than Stock" });
+        const curStockVal = parseFloat(data.curStock || 0);
+        const allottedVal = parseFloat(data.allotted || 0);
+        const issueQtyVal = parseFloat(data.issueQty || 0);
+
+        let existingIssueQty = 0;
+        if (issueItemId && issueItemId != 0) {
+            const existingItem = await wardIssueModel.getIssueItemById(issueItemId);
+            if (existingItem) {
+                existingIssueQty = parseFloat(existingItem.issueQty || 0);
+            }
         }
 
-        if (parseFloat(data.issueQty) > parseFloat(data.allotted)) {
+        const totalAvailableStock = curStockVal + existingIssueQty;
+
+        if (issueQtyVal > totalAvailableStock) {
+            return res.status(400).json({ error: `Issue Qty cannot be greater than Available Stock (${totalAvailableStock})` });
+        }
+
+        if (allottedVal > 0 && issueQtyVal > allottedVal) {
             return res.status(400).json({ error: "Issue Qty cannot be greater than Requested Qty" });
         }
 

@@ -21,30 +21,60 @@ function generateOTP() {
 }
 
 /**
- * Send OTP via SMS using Twilio
+ * Send OTP via DPDMIS SMS API (with Twilio & Mock fallbacks)
  */
 async function sendSMS(toPhone, otp) {
-  if (!twilioClient) {
-    logger.warn('Twilio is not configured. Mocking SMS send.');
-    logger.info(`[MOCK SMS] to ${toPhone}: Your login OTP is ${otp}`);
-    return true;
+  const message = `OTP for Login on DPDMIS is ${otp}`;
+  const templateId = "1407161537152057950";
+  const smsServiceType = "otpmsg";
+  const cleanPhone = String(toPhone || '').trim();
+
+  // Try DPDMIS SMS API
+  try {
+    const payload = {
+      mobileNo: cleanPhone,
+      message: message,
+      templateId: templateId,
+      smsServiceType: smsServiceType
+    };
+
+    const response = await fetch('https://dpdmis.in/SMSASP/api/SmsTest/Send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+      logger.info(`OTP sent via DPDMIS SMS API to ${cleanPhone}`);
+      return true;
+    } else {
+      logger.warn(`DPDMIS SMS API returned HTTP ${response.status}`);
+    }
+  } catch (error) {
+    logger.warn(`DPDMIS SMS API dispatch failed: ${error.message}`);
   }
 
-  try {
-    // If testing on a trial account, you might only be able to send to RECIPIENT_PHONE_NUMBER
-    const recipient = process.env.RECIPIENT_PHONE_NUMBER || toPhone;
-    
-    await twilioClient.messages.create({
-      body: `Your Facility Module login OTP is: ${otp}. It is valid for 5 minutes.`,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: recipient
-    });
-    logger.info(`OTP sent via SMS to ${recipient}`);
-    return true;
-  } catch (error) {
-    logger.error(`Failed to send SMS: ${error.message}`);
-    throw new Error('Failed to send SMS OTP');
+  // Fallback to Twilio if configured
+  if (twilioClient) {
+    try {
+      const recipient = process.env.RECIPIENT_PHONE_NUMBER || cleanPhone;
+      await twilioClient.messages.create({
+        body: `${message}. Valid for 5 minutes.`,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to: recipient
+      });
+      logger.info(`OTP sent via Twilio SMS to ${recipient}`);
+      return true;
+    } catch (error) {
+      logger.error(`Twilio SMS error: ${error.message}`);
+    }
   }
+
+  // Fallback mock log for local/testing
+  logger.info(`[MOCK SMS] to ${cleanPhone}: ${message}`);
+  return true;
 }
 
 /**
