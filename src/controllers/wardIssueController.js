@@ -79,8 +79,12 @@ async function getHeaderInfo(req, res) {
 async function saveHeaderInfo(req, res) {
     try {
         const data = req.body; // should include issueId (optional), facilityId, wardId, issueNo, requestedBy, requestedDt, issueDate
-        if (!data.facilityId || !data.wardId || !data.issueNo) {
-            return res.status(400).json({ error: "Missing required fields" });
+        if (!data.facilityId || !data.wardId) {
+            return res.status(400).json({ error: "facilityId and wardId are required" });
+        }
+
+        if (!data.issueNo || data.issueNo === 'Auto generated') {
+            data.issueNo = await wardIssueModel.generateIssueNo(data.facilityId);
         }
 
         let issueId;
@@ -91,8 +95,9 @@ async function saveHeaderInfo(req, res) {
             issueId = data.issueId;
         }
 
-        res.json({ message: "Updated Successfully", issueId });
+        res.json({ message: "Updated Successfully", issueId, issueNo: data.issueNo });
     } catch (error) {
+        console.error("Error in saveHeaderInfo:", error);
         res.status(500).json({ error: error.message });
     }
 }
@@ -259,11 +264,12 @@ async function getBatches(req, res) {
              CASE WHEN a.status='C' THEN NVL(a.issueqty,0) ELSE NVL(a.issueqty,0) END IssueQty,
              NVL(a.IssueQty,0) AllotQty,
              rb.Inwno,
-             rb.StockLocation
+             NVL(mr.locationno, rb.StockLocation) AS StockLocation
       FROM tbfacilityoutwards a
       INNER JOIN tbfacilityissueitems tbi ON tbi.issueitemid = a.issueitemid
       INNER JOIN tbfacilityissues tb ON tb.issueid = tbi.issueid
       INNER JOIN tbFacilityReceiptBatches rb ON rb.inwno = a.inwno AND rb.facreceiptitemid = a.facreceiptitemid
+      LEFT OUTER JOIN masracks mr ON mr.rackid = rb.StockLocation
       INNER JOIN tbfacilityreceiptitems ri ON ri.facreceiptitemid = rb.facreceiptitemid
       WHERE tb.FacilityID = :facilityId
         AND tbi.IssueItemID = :issueItemId

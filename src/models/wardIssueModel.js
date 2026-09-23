@@ -182,19 +182,59 @@ async function getFacilityStock(facilityId, itemId) {
     return 0;
 }
 
-async function createHeaderInfo(data) {
+const formatDateForOracle = (dStr) => {
+    if (!dStr) return null;
+    if (dStr instanceof Date) {
+        return dStr.toISOString().split('T')[0];
+    }
+    const str = String(dStr).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+        return str.substring(0, 10);
+    }
+    if (/^\d{2}-\d{2}-\d{4}/.test(str)) {
+        const parts = str.split('-');
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    return str.split('T')[0];
+};
+
+async function getHeaderInfo(issueId) {
     const query = `
-        Insert into tbFacilityIssues (FacilityID,IssueNo,IssueDate,WardID,WrequestDate,WRequestBy) 
-        values (:facilityId, :issueNo, TO_DATE(:issueDate, 'DD-MM-YYYY'), :wardId, TO_DATE(:requestDate, 'DD-MM-YYYY'), :requestBy) 
+        SELECT a.IssueID, a.FacilityID, a.IssueNo, 
+               TO_CHAR(a.IssueDate, 'YYYY-MM-DD') AS IssueDate, 
+               a.WardID, 
+               TO_CHAR(a.WrequestDate, 'YYYY-MM-DD') AS WrequestDate, 
+               a.WRequestBy, 
+               a.Status, 
+               a.Remarks,
+               w.WardName, 
+               w.WardCode
+        FROM tbFacilityIssues a
+        LEFT OUTER JOIN masFacilityWards w ON w.WardID = a.WardID
+        WHERE a.IssueID = :issueId
+    `;
+    const oracledb = require('oracledb');
+    const result = await db.execute(query, { issueId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    return result.rows && result.rows.length > 0 ? result.rows[0] : null;
+}
+
+async function createHeaderInfo(data) {
+    const issueDateStr = formatDateForOracle(data.issueDate) || formatDateForOracle(new Date());
+    const requestDateStr = formatDateForOracle(data.requestedDt || data.requestDate || data.WrequestDate) || issueDateStr;
+    const requestByStr = data.requestedBy || data.requestBy || data.WRequestBy || '';
+
+    const query = `
+        Insert into tbFacilityIssues (FacilityID, IssueNo, IssueDate, WardID, WrequestDate, WRequestBy, IssueType, Status) 
+        values (:facilityId, :issueNo, TO_DATE(:issueDate, 'YYYY-MM-DD'), :wardId, TO_DATE(:requestDate, 'YYYY-MM-DD'), :requestBy, 'NO', 'IR') 
         RETURNING IssueID INTO :issueId
     `;
     const binds = {
         facilityId: data.facilityId,
         issueNo: data.issueNo,
-        issueDate: data.issueDate,
+        issueDate: issueDateStr,
         wardId: data.wardId,
-        requestDate: data.requestDate,
-        requestBy: data.requestBy,
+        requestDate: requestDateStr,
+        requestBy: requestByStr,
         issueId: { dir: require('oracledb').BIND_OUT, type: require('oracledb').NUMBER }
     };
     const result = await db.execute(query, binds, { autoCommit: true });
@@ -202,14 +242,28 @@ async function createHeaderInfo(data) {
 }
 
 async function updateHeaderInfo(data) {
+    const issueDateStr = formatDateForOracle(data.issueDate) || formatDateForOracle(new Date());
+    const requestDateStr = formatDateForOracle(data.requestedDt || data.requestDate || data.WrequestDate) || issueDateStr;
+    const requestByStr = data.requestedBy || data.requestBy || data.WRequestBy || '';
+    const remarksStr = data.remarks || '';
+
     const query = `
         Update tbFacilityIssues 
-        set WardID = :wardId, FacilityID=:facilityId, IssueNo=:issueNo, 
-            IssueDate=TO_DATE(:issueDate, 'DD-MM-YYYY'), WrequestDate=TO_DATE(:requestDate, 'DD-MM-YYYY'), WRequestBy=:requestBy, Remarks=:remarks 
-        Where IssueID=:issueId
+        set WardID = :wardId, FacilityID = :facilityId, IssueNo = :issueNo, 
+            IssueDate = TO_DATE(:issueDate, 'YYYY-MM-DD'), WrequestDate = TO_DATE(:requestDate, 'YYYY-MM-DD'), WRequestBy = :requestBy, Remarks = :remarks 
+        Where IssueID = :issueId
     `;
-    if (!data.remarks) data.remarks = '';
-    const result = await db.execute(query, data, { autoCommit: true });
+    const binds = {
+        wardId: data.wardId,
+        facilityId: data.facilityId,
+        issueNo: data.issueNo,
+        issueDate: issueDateStr,
+        requestDate: requestDateStr,
+        requestBy: requestByStr,
+        remarks: remarksStr,
+        issueId: data.issueId
+    };
+    const result = await db.execute(query, binds, { autoCommit: true });
     return result;
 }
 
@@ -508,11 +562,10 @@ async function getAccYears() {
     const query = `
         SELECT AccYrSetID, SHAccYear
         FROM masAccYearSettings
-        where sysdate >= STARTDATE
         ORDER BY StartDate DESC
-
     `;
-    const result = await db.execute(query, {});
+    const oracledb = require('oracledb');
+    const result = await db.execute(query, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     return result.rows;
 }
 
@@ -521,9 +574,9 @@ async function getWardIssuesList(facilityId, status, accYrSetId, itemId) {
     const binds = { facilityId };
 
     if (status === 'IR') {
-        filterCondition += " AND NVL(a.Status, 'IN') = 'IN'";
+        filterCondition += " AND NVL(a.Status, 'IR') IN ('IR', 'IN')";
     } else if (status === 'CR') {
-        filterCondition += " AND NVL(a.Status, 'IN') = 'C'";
+        filterCondition += " AND NVL(a.Status, 'IR') = 'C'";
     }
 
     if (accYrSetId) {
@@ -545,23 +598,24 @@ async function getWardIssuesList(facilityId, status, accYrSetId, itemId) {
             fac.FacilityName,
             d.DistrictName,
             a.IssueNo,
-            a.IssueDate,
-            a.WRequestDate,
+            TO_CHAR(a.IssueDate, 'YYYY-MM-DD') AS IssueDate,
+            TO_CHAR(a.WRequestDate, 'YYYY-MM-DD') AS WRequestDate,
             a.WRequestBy,
-            NVL(a.Status, 'IN') as Status,
+            NVL(a.Status, 'IR') as Status,
             a.IssueID
         from tbFacilityIssues a
-        Inner Join masFacilityWards b on (b.WardID=a.WardID)
-        Inner Join masFacilities fac on (fac.FacilityID=b.FacilityID)
-        Inner Join masStates c on (c.StateID=fac.StateID)
-        Inner Join masDistricts d on (d.StateID=c.StateID and d.DistrictID=fac.DistrictID)
-        Inner Join masAccYearSettings m1 on (a.IssueDate Between m1.StartDate and m1.EndDate)
+        LEFT OUTER JOIN masFacilityWards b on (b.WardID = a.WardID)
+        LEFT OUTER JOIN masFacilities fac on (fac.FacilityID = a.FacilityID)
+        LEFT OUTER JOIN masStates c on (c.StateID = fac.StateID)
+        LEFT OUTER JOIN masDistricts d on (d.StateID = c.StateID and d.DistrictID = fac.DistrictID)
+        LEFT OUTER JOIN masAccYearSettings m1 on (TRUNC(a.IssueDate) Between TRUNC(m1.StartDate) and TRUNC(m1.EndDate))
         Where a.FacilityID = :facilityId 
-          AND a.IssueType = 'NO'
+          AND NVL(a.IssueType, 'NO') = 'NO'
           ${filterCondition}
-        Order By a.IssueDate DESC
+        Order By a.IssueDate DESC, a.IssueID DESC
     `;
-    const result = await db.execute(query, binds);
+    const oracledb = require('oracledb');
+    const result = await db.execute(query, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     return result.rows;
 }
 

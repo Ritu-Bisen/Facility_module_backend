@@ -48,8 +48,8 @@ function validateIdentifier(identifier) {
   }
 
   const clean = identifier.trim();
-  if (clean.length === 0 || clean.length > 100) {
-    return { valid: false, message: 'User ID length must be between 1 and 100 characters' };
+  if (clean.length === 0 || clean.length > 50) {
+    return { valid: false, message: 'User ID / Email length cannot exceed 50 characters' };
   }
 
   // Allowed characters: Alphanumeric, @, ., _, -, +

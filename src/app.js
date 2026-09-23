@@ -58,25 +58,58 @@ app.use(
         "script-src": ["'self'"], // Removed 'unsafe-inline' as per STQC recommendations
         "style-src": ["'self'"], // Removed 'unsafe-inline' as per STQC recommendations
         "img-src": ["'self'", "data:", "https:"],
-        "connect-src": ["'self'", "https://dpdmis.in", "http://localhost:5173"],
+        "connect-src": ["'self'", "https://dpdmis.in", "http://dpdmis.in", "http://localhost:5173", "http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:5173", "http://127.0.0.1:3000", "http://127.0.0.1:3001"],
         "frame-ancestors": ["'none'"],
       },
     },
   })
 );
-const allowedOrigins = ['https://dpdmis.in', 'http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001'];
+
+// Parse environment allowed origins if configured
+const envAllowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim().replace(/\/$/, ''))
+  : [];
+
+const defaultAllowedOrigins = [
+  'https://dpdmis.in',
+  'http://dpdmis.in',
+  'https://www.dpdmis.in',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:5174',
+];
+
+const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envAllowedOrigins]));
+
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (e.g., server-to-server) or from allowed origins
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow requests with no origin (e.g., server-to-server, mobile apps, Postman)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // Allow all origins if ALLOWED_ORIGINS env var is explicitly set to '*'
+    if (process.env.ALLOWED_ORIGINS === '*') {
+      return callback(null, true);
+    }
+
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    if (allowedOrigins.includes(normalizedOrigin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      const corsError = new Error(`Not allowed by CORS: ${origin}`);
+      corsError.status = 403;
+      callback(corsError);
     }
   },
   credentials: true, // Enable if cookies/authorization headers are needed
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Restrict to necessary methods
-  allowedHeaders: ['Content-Type', 'Authorization'] // Restrict to necessary headers
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'], // Allowed HTTP methods
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'] // Allowed headers
 };
 
 app.use(cors(corsOptions));
@@ -130,6 +163,8 @@ app.use('/api/local-items', require('./routes/localItemsRoutes'));
 app.use('/api/noc-cancellation', require('./routes/nocCancellationRoutes'));
 app.use('/api/return-to-warehouse', require('./routes/returnToWarehouseRoutes'));
 app.use('/api/reagent-indent', require('./routes/reagentIndentRoutes'));
+app.use('/api/program-indent', require('./routes/programIndentRoutes'));
+app.use('/api/opening-stock', require('./routes/openingStockRoutes'));
 
 // 404 Handler for unmatched API routes
 app.use((req, res, next) => {

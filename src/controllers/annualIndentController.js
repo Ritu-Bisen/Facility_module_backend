@@ -91,10 +91,21 @@ async function getMcHospitalAiVsIssuance(req, res) {
 async function getDownloadAiFormatData(req, res) {
   try {
     const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
-    const data = await annualIndentModel.getDownloadAiFormatData(facilityId);
+    const categoryId = req.query.categoryId || 0;
+    const data = await annualIndentModel.getDownloadAiFormatData(facilityId, categoryId);
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error in getDownloadAiFormatData:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getIndentCategories(req, res) {
+  try {
+    const data = await annualIndentModel.getIndentCategories();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getIndentCategories:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 }
@@ -113,8 +124,8 @@ async function getUploadForwardList(req, res) {
   try {
     const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
     const { finYearId } = req.query;
-    const data = await annualIndentModel.getUploadForwardList(facilityId, finYearId);
-    res.json({ success: true, data });
+    const result = await annualIndentModel.getUploadForwardList(facilityId, finYearId);
+    res.json({ success: true, data: result.list, canAdd: result.canAdd });
   } catch (error) {
     console.error('Error in getUploadForwardList:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -124,8 +135,8 @@ async function getUploadForwardList(req, res) {
 async function getCreateIndentHeader(req, res) {
   try {
     const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
-    const { finYearId } = req.query;
-    const data = await annualIndentModel.getCreateIndentHeader(facilityId, finYearId);
+    const { finYearId, indentId } = req.query;
+    const data = await annualIndentModel.getCreateIndentHeader(facilityId, finYearId, indentId);
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error in getCreateIndentHeader:', error);
@@ -163,6 +174,42 @@ async function deleteCreateIndentItem(req, res) {
     res.json({ success: true, message: 'Item deleted successfully' });
   } catch (error) {
     console.error('Error in deleteCreateIndentItem:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function generateIndentHeader(req, res) {
+  try {
+    const facilityId = req.body.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, categoryId } = req.body;
+    const data = await annualIndentModel.generateIndentHeader(facilityId, finYearId, categoryId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in generateIndentHeader:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function freezeIndent(req, res) {
+  try {
+    const facilityId = req.body.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId } = req.body;
+    await annualIndentModel.freezeIndent(facilityId, finYearId, indentId);
+    res.json({ success: true, message: 'Indent Finalized Successfully' });
+  } catch (error) {
+    console.error('Error in freezeIndent:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function deleteIndent(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId } = req.query;
+    await annualIndentModel.deleteIndent(facilityId, finYearId, indentId);
+    res.json({ success: true, message: 'Indent Deleted Successfully' });
+  } catch (error) {
+    console.error('Error in deleteIndent:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 }
@@ -209,6 +256,18 @@ async function getMcAiVsIssuanceReport(req, res) {
   }
 }
 
+async function uploadExcelIndentItems(req, res) {
+  try {
+    const facilityId = req.body.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId, items } = req.body;
+    const data = await annualIndentModel.uploadExcelIndentItems(facilityId, finYearId, indentId, items);
+    res.json({ success: true, message: 'Excel items uploaded successfully', data });
+  } catch (error) {
+    console.error('Error in uploadExcelIndentItems:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 module.exports = {
   getItems,
   getSummary,
@@ -217,14 +276,19 @@ module.exports = {
   deleteDistribution,
   getMcHospitalAiVsIssuance,
   getDownloadAiFormatData,
+  getIndentCategories,
   getUploadForwardFinYears,
   getUploadForwardList,
   getCreateIndentHeader,
   getCreateIndentItems,
   updateCreateIndentItem,
   deleteCreateIndentItem,
+  generateIndentHeader,
+  freezeIndent,
+  deleteIndent,
   getMedicalCollegeAiDropdowns,
   getMedicalCollegeAiReport,
   getMcAiVsIssuanceDropdowns,
-  getMcAiVsIssuanceReport
+  getMcAiVsIssuanceReport,
+  uploadExcelIndentItems
 };

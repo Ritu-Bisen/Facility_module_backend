@@ -35,8 +35,8 @@ async function loginWithEmail(req, res, next) {
       return res.status(400).json({ success: false, message: 'Password is required' });
     }
 
-    if (email && typeof email === 'string' && email.length > 100) {
-      return res.status(400).json({ success: false, message: 'Email length cannot exceed 100 characters' });
+    if (email && typeof email === 'string' && email.length > 50) {
+      return res.status(400).json({ success: false, message: 'Email / User ID length cannot exceed 50 characters' });
     }
     if (password && typeof password === 'string' && password.length > 128) {
       return res.status(400).json({ success: false, message: 'Password length cannot exceed 128 characters' });

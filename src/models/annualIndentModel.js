@@ -272,29 +272,49 @@ async function getMcHospitalAiVsIssuance(facilityId) {
 }
 
 // Fetch Annual Indent Excel Download Format Data
-async function getDownloadAiFormatData(facilityId) {
+async function getDownloadAiFormatData(facilityId, categoryId) {
   try {
     const facId = Number(facilityId) || 22595;
+    const inputCatId = Number(categoryId) || 0;
+
+    let realCatId = inputCatId;
+    if (realCatId > 0) {
+      const subRes = await db.execute(
+        `select categoryid from massubitemcategory where subcatid = :realCatId`,
+        { realCatId },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      if (subRes.rows && subRes.rows.length > 0) {
+        realCatId = Number(subRes.rows[0].CATEGORYID || subRes.rows[0].categoryid);
+      }
+    }
+
+    let categoryClause = '';
+    const binds = { facId };
+    if (realCatId > 0) {
+      categoryClause = ' and mt.categoryid = :realCatId ';
+      binds.realCatId = realCatId;
+    }
+
     const query = `
       select 0 SlNo, Formate.itemcode, substr(Formate.itemname,1,100) as itemname, Formate.Formulation, substr(Formate.Strength,1,100) Strength, Formate.GroupName,
-             Formate.edl, nvl(iss.FacIssueqty,0) as Issued_From_WH_01_Apr_25_to_31st_Oct_25, 0 as Actual_Consumption_From_01_April_25_to_31st_Oct_25, 
-             0 as Estimated_Consumption_For_One_Year_From_01_April_25_to_31st_March_26, nvl(cr.CurStock,0) as Current_Stock, 0 as ANNUAL_INDENT_26_27, 
-             nvl(vr.singlerate,0) as Rate, Formate.categoryname 
+             Formate.edl, nvl(iss.FacIssueqty,0) as COSUMPTION, nvl(cr.CurStock,0) as Current_Stock, 0 as INDENT_26_27, 
+             nvl(vr.singlerate,0) as Rate, Formate.PACKAGINGUNIT, Formate.categoryname 
       from (
           select 0 SlNo, m.itemcode, m.ItemID, case when length(m.itemname)>100 then substr(m.itemname,0,100) else itemname end itemname, 
                  t.itemtypename Formulation, case when length(m.strength1)>100 then substr(m.strength1,0,100) else m.strength1 end Strength, 
-                 g.groupname GroupName, e.edl, 0 COSUMPTION_From_1APR_24, 0 Current_Stock, 0 INDENT_25_26, m.isedl2021, mt.categoryname,
+                 g.groupname GroupName, nvl(e.edl, 'EDL') edl, 0 COSUMPTION_From_1APR_24, 0 Current_Stock, 0 INDENT_25_26, m.isedl2021, mt.categoryname,
+                 nvl(m.packingqty, nvl(m.unitcount, 1)) as PACKAGINGUNIT,
                  case when isedl2021='Y' then 'Yes' else 'No' end as EDL2021, case when EDL2025='Y' then 'Yes' else 'No' end as EDL2025,
                  case when (edl2025flag='COMMON' or edl2025flag='DHS') then 'Yes' else 'No' end as IsIPHS, mc.mcid
           from masitems m 
-          inner join masitemai ai on ai.itemid=m.itemid and ai.ACCYRSETID=547
           inner join masitemgroups g on m.groupid=g.groupid  
           inner join masitemcategories mt on mt.categoryid=m.categoryid 
-          inner join masitemmaincategory mc on mc.MCID=mt.MCID
-          inner join masedl e on e.edlcat=m.edlcat 
-          inner join masitemtypes t on t.itemtypeid=m.itemtypeid
-          where mc.MCID in (1,2) and m.isfreez_itpr is null 
-            and m.edlcat <= (select t.edlindent from masfacilities f inner join masfacilitytypes t on t.facilitytypeid=f.facilitytypeid where f.facilityid = :facId)
+          left outer join masitemmaincategory mc on mc.MCID=mt.MCID
+          left outer join masedl e on e.edlcat=m.edlcat 
+          left outer join masitemtypes t on t.itemtypeid=m.itemtypeid
+          where m.isfreez_itpr is null 
+            ${categoryClause}
       ) Formate
       left outer join v_itemrate vr on vr.itemid=Formate.itemid
       left outer join (
@@ -302,9 +322,7 @@ async function getDownloadAiFormatData(facilityId) {
           from tbfacilityissues i
           inner join tbfacilityissueitems ii on ii.issueid=i.issueid
           inner join tbfacilityoutwards tbo on tbo.issueitemid=ii.issueitemid
-          inner join tbfacilityreceiptbatches rb on rb.inwno=tbo.inwno
           where i.status='C' and i.facilityid = :facId
-            and i.issuedate between to_date('01-APR-2025', 'DD-MON-YYYY') and to_date('31-MAR-2026', 'DD-MON-YYYY')
           group by ii.itemid
       ) iss on iss.itemid=Formate.ItemID
       left outer join (
@@ -331,7 +349,7 @@ async function getDownloadAiFormatData(facilityId) {
                DECODE(categoryname, 'DRUGS',1, 'CONSUMABLE AND SURGICAL',2, 'SURGICALS AND SUTURES',3), groupname, itemname
     `;
 
-    const result = await db.execute(query, { facId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const result = await db.execute(query, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const rows = result.rows || [];
     return rows.map((r, idx) => ({
       slNo: idx + 1,
@@ -341,12 +359,11 @@ async function getDownloadAiFormatData(facilityId) {
       strength: r.STRENGTH || r.strength || '-',
       groupName: r.GROUPNAME || r.groupName || '-',
       edl: r.EDL || r.edl || '-',
-      issuedFromWh: r.ISSUED_FROM_WH_01_APR_25_TO_31ST_OCT_25 || r.issued_From_WH_01_Apr_25_to_31st_Oct_25 || 0,
-      actualConsumption: r.ACTUAL_CONSUMPTION_FROM_01_APRIL_25_TO_31ST_OCT_25 || 0,
-      estimatedConsumption: r.ESTIMATED_CONSUMPTION_FOR_ONE_YEAR_FROM_01_APRIL_25_TO_31ST_MARCH_26 || 0,
+      cosumption: r.COSUMPTION || 0,
       currentStock: r.CURRENT_STOCK || r.current_Stock || 0,
-      annualIndent2627: r.ANNUAL_INDENT_26_27 || 0,
+      indent2627: r.INDENT_26_27 || 0,
       rate: r.RATE || r.rate || 0,
+      packagingUnit: r.PACKAGINGUNIT || r.packagingUnit || 1,
       categoryName: r.CATEGORYNAME || r.categoryname || '-'
     }));
   } catch (error) {
@@ -355,14 +372,47 @@ async function getDownloadAiFormatData(facilityId) {
   }
 }
 
+// Fetch Item Categories for Download Excel Format Dropdown
+async function getIndentCategories() {
+  try {
+    const query = `
+      select s.subcatid as categoryid, 
+             s.catname || ' (' || c.categoryname || ')' as categoryname
+      from massubitemcategory s
+      inner join masitemcategories c on c.categoryid = s.categoryid
+      union all
+      select c.categoryid as categoryid,
+             c.categoryname as categoryname
+      from masitemcategories c
+      where c.categoryid not in (select distinct categoryid from massubitemcategory where categoryid is not null)
+      order by categoryname
+    `;
+    const result = await db.execute(query, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    return (result.rows || []).map(r => ({
+      categoryId: r.CATEGORYID || r.categoryId,
+      categoryName: r.CATEGORYNAME || r.categoryName
+    }));
+  } catch (error) {
+    console.error('Error fetching Indent Categories:', error);
+    throw error;
+  }
+}
+
 // Get Financial Years for Upload & Forward Annual Indent
 async function getUploadForwardFinYears() {
   try {
-    const query = `select accyrsetid, accyear from masaccyearsettings where accyrsetid > 537 order by accyrsetid desc`;
+    const query = `
+      select accyrsetid, accyear,
+             case when sysdate between startdate and enddate then 'Y' else 'N' end as is_current
+      from masaccyearsettings 
+      where accyrsetid > 537 
+      order by accyrsetid desc
+    `;
     const result = await db.execute(query, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     return (result.rows || []).map(r => ({
       accYrSetId: r.ACCYRSETID || r.accYrSetId,
-      accYear: r.ACCYEAR || r.accYear
+      accYear: r.ACCYEAR || r.accYear,
+      isCurrent: (r.IS_CURRENT || r.is_current) === 'Y'
     }));
   } catch (error) {
     console.error('Error fetching Upload Forward Fin Years:', error);
@@ -375,6 +425,23 @@ async function getUploadForwardList(facilityId, finYearId) {
   try {
     const facId = Number(facilityId) || 22595;
     const fyId = Number(finYearId) || 547;
+
+    // Check count for CheckAnualindent() logic: count <= 3 allows adding new indent
+    let canAdd = false;
+    try {
+      const cntQuery = `select count(indentid) cnt from masanualindent where facilityid = :facId and accyrsetid = :fyId`;
+      const cntResult = await db.execute(cntQuery, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      if (cntResult.rows && cntResult.rows.length > 0) {
+        const cnt = Number(cntResult.rows[0].CNT || cntResult.rows[0].cnt || 0);
+        canAdd = (cnt <= 3);
+      } else {
+        canAdd = true;
+      }
+    } catch (e) {
+      console.warn('Failed to check indent count:', e.message);
+      canAdd = true;
+    }
+
     const query = `
       select null SlNo, a.DispatchNo, to_char(a.DispatchDate,'dd-mm-yyyy') DispatchDate, a.indentid NOCID, 
              a.indentno NOCNumber, to_char(a.indentdate,'dd-mm-yyyy') NOCDATE, 
@@ -385,9 +452,16 @@ async function getUploadForwardList(facilityId, finYearId) {
                WHEN 'D' THEN 'Deleted' 
                ELSE 'Completed'
              end status, 
-             c.AccYear, a.facilityID 
+             c.AccYear, a.facilityID, 
+             coalesce(
+               (select sub.catname || ' (' || mc2.categoryname || ')' from massubitemcategory sub inner join masitemcategories mc2 on mc2.categoryid = sub.categoryid where sub.subcatid = a.AIcategoryid),
+               mc.categoryname,
+               (select min(mc3.categoryname) from anualindent ai inner join masitems m on m.itemid = ai.itemid inner join masitemcategories mc3 on mc3.categoryid = m.categoryid where ai.indentid = a.indentid),
+               'General'
+             ) categoryname 
       from masAnualIndent a
       inner join masaccyearsettings c on a.accyrsetid = c.accyrsetid
+      left outer join masitemcategories mc on mc.categoryid = a.AIcategoryid
       where a.nonedlindenttype is null and a.isreagent is null 
         and a.AccYrSetID = :fyId
         and a.facilityID = :facId 
@@ -396,7 +470,7 @@ async function getUploadForwardList(facilityId, finYearId) {
 
     const result = await db.execute(query, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const rows = result.rows || [];
-    return rows.map((r, idx) => ({
+    const list = rows.map((r, idx) => ({
       slNo: idx + 1,
       nocId: r.NOCID || r.nocId,
       nocNumber: r.NOCNUMBER || r.nocNumber || '-',
@@ -404,9 +478,12 @@ async function getUploadForwardList(facilityId, finYearId) {
       status: r.STATUS || r.status || 'Completed',
       accYear: r.ACCYEAR || r.accYear || '-',
       facilityId: r.FACILITYID || r.facilityId,
+      categoryName: r.CATEGORYNAME || r.categoryName || 'General',
       dispatchNo: r.DISPATCHNO || r.dispatchNo || '-',
       dispatchDate: r.DISPATCHDATE || r.dispatchDate || '-'
     }));
+
+    return { list, canAdd };
   } catch (error) {
     console.error('Error fetching Upload Forward Indent List:', error);
     throw error;
@@ -414,35 +491,49 @@ async function getUploadForwardList(facilityId, finYearId) {
 }
 
 // Fetch Header info for Create/Edit Annual Indent (AnualItemIndent.aspx)
-async function getCreateIndentHeader(facilityId, finYearId) {
+async function getCreateIndentHeader(facilityId, finYearId, indentId) {
   try {
     const facId = Number(facilityId) || 22595;
     const fyId = Number(finYearId) || 547;
-    const query = `
-      select indentid, indentno, to_char(indentdate,'dd-mm-yyyy') indentdate, status 
-      from masAnualIndent 
-      where nonedlindenttype is null and isreagent is null 
-        and accyrsetid = :fyId and facilityid = :facId
-    `;
-    const result = await db.execute(query, { fyId, facId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-    if (result.rows && result.rows.length > 0) {
-      const r = result.rows[0];
-      return {
-        indentId: r.INDENTID || r.indentId,
-        indentNo: r.INDENTNO || r.indentNo,
-        indentDate: r.INDENTDATE || r.indentDate,
-        status: r.STATUS || r.status,
-        exists: true
-      };
-    } else {
-      return {
-        indentId: 0,
-        indentNo: 'AUTO GENERATED',
-        indentDate: 'System Generated',
-        status: 'N',
-        exists: false
-      };
+    const indId = Number(indentId) || 0;
+
+    if (indId > 0) {
+      const query = `
+        select a.indentid, a.indentno, to_char(a.indentdate,'dd-mm-yyyy') indentdate, a.status, a.AIcategoryid, 
+               coalesce(
+                 (select sub.catname || ' (' || mc2.categoryname || ')' from massubitemcategory sub inner join masitemcategories mc2 on mc2.categoryid = sub.categoryid where sub.subcatid = a.AIcategoryid),
+                 mc.categoryname,
+                 (select min(mc3.categoryname) from anualindent ai inner join masitems m on m.itemid = ai.itemid inner join masitemcategories mc3 on mc3.categoryid = m.categoryid where ai.indentid = a.indentid),
+                 'General'
+               ) categoryname 
+        from masAnualIndent a
+        left outer join masitemcategories mc on mc.categoryid = a.AIcategoryid
+        where a.indentid = :indId and a.facilityid = :facId
+      `;
+      const result = await db.execute(query, { indId, facId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      if (result.rows && result.rows.length > 0) {
+        const r = result.rows[0];
+        return {
+          indentId: r.INDENTID || r.indentId,
+          indentNo: r.INDENTNO || r.indentNo,
+          indentDate: r.INDENTDATE || r.indentDate,
+          status: r.STATUS || r.status,
+          categoryId: r.AICATEGORYID || r.aiCategoryId || 0,
+          categoryName: r.CATEGORYNAME || r.categoryName || 'General',
+          exists: true
+        };
+      }
     }
+
+    return {
+      indentId: 0,
+      indentNo: 'AUTO GENERATED',
+      indentDate: 'System Generated',
+      status: 'N',
+      categoryId: 0,
+      categoryName: '',
+      exists: false
+    };
   } catch (error) {
     console.error('Error fetching Create Indent Header:', error);
     throw error;
@@ -477,6 +568,7 @@ async function getCreateIndentItems(facilityId, finYearId, indentId) {
         and ma.isreagent is null 
         and ma.facilityid = :facId 
         and ma.accyrsetid = :fyId
+        and nvl(a.facilityindentqty, 0) > 0
       order by m.itemname
     `;
 
@@ -508,7 +600,7 @@ async function getCreateIndentItems(facilityId, finYearId, indentId) {
     // Calculate Summary Values
     const summaryQuery = `
       select a.indentid, count(distinct ai.itemid) cntIte,
-             round(sum(nvl(ai.FACILITYINDENTQTY,0)*nvl(ai.Rate,0))/10000000, 2) as indVal
+             sum(nvl(ai.FACILITYINDENTQTY,0)*nvl(ai.Rate,0)) as totalValRs
       from masanualindent a 
       inner join anualindent ai on ai.indentid=a.indentid
       where a.indentid = :indId and nvl(ai.FACILITYINDENTQTY,0) > 0
@@ -518,8 +610,16 @@ async function getCreateIndentItems(facilityId, finYearId, indentId) {
     let noOfItems = 0;
     let aproxIndentValue = '0.00';
     if (summaryRes.rows && summaryRes.rows.length > 0) {
-      noOfItems = summaryRes.rows[0].CNTITE || summaryRes.rows[0].cntIte || 0;
-      aproxIndentValue = String(summaryRes.rows[0].INDVAL || summaryRes.rows[0].indVal || '0.00');
+      noOfItems = Number(summaryRes.rows[0].CNTITE || summaryRes.rows[0].cntIte || 0);
+      const totalRs = Number(summaryRes.rows[0].TOTALVALRS || summaryRes.rows[0].totalValRs || 0);
+      const crVal = totalRs / 10000000;
+      if (crVal >= 0.01) {
+        aproxIndentValue = crVal.toFixed(2);
+      } else if (crVal > 0) {
+        aproxIndentValue = crVal.toFixed(4);
+      } else {
+        aproxIndentValue = '0.00';
+      }
     }
 
     return {
@@ -570,6 +670,100 @@ async function deleteCreateIndentItem(anualIndentId) {
     return true;
   } catch (error) {
     console.error('Error deleting Create Indent Item:', error);
+    throw error;
+  }
+}
+
+// Generate Annual Indent Header (lbtnUpdateSOInfo_Click)
+async function generateIndentHeader(facilityId, finYearId, categoryId) {
+  try {
+    const facId = Number(facilityId) || 22595;
+    const fyId = Number(finYearId) || 547;
+    const catId = categoryId ? Number(categoryId) : null;
+
+    // Get year code
+    const yrQuery = `select shaccyear from masAccYearSettings where accyrsetid = :fyId`;
+    const yrRes = await db.execute(yrQuery, { fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const shYear = yrRes.rows && yrRes.rows[0] ? (yrRes.rows[0].SHACCYEAR || yrRes.rows[0].shaccyear || '26-27') : '26-27';
+
+    // Auto generate code: facId/AI00001/shYear
+    const seqQuery = `select nvl(max(auto_aicode), 0) + 1 as nextcode from masAnualIndent where facilityid = :facId and accyrsetid = :fyId`;
+    const seqRes = await db.execute(seqQuery, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const nextCode = seqRes.rows && seqRes.rows[0] ? (seqRes.rows[0].NEXTCODE || seqRes.rows[0].nextcode || 1) : 1;
+    const codeStr = String(nextCode).padStart(5, '0');
+    const indentNo = `${facId}/AI${codeStr}/${shYear}`;
+
+    // Get Next Indent ID
+    const idQuery = `select nvl(max(indentid), 0) + 1 as nextid from masAnualIndent`;
+    const idRes = await db.execute(idQuery, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const indentId = idRes.rows && idRes.rows[0] ? (idRes.rows[0].NEXTID || idRes.rows[0].nextid || 1) : 1;
+
+    const insertQuery = `
+      insert into masAnualIndent (indentid, AccYrSetID, FacilityID, indentno, indentdate, Status, auto_aicode, AIcategoryid)
+      values (:indentId, :fyId, :facId, :indentNo, sysdate, 'I', :nextCode, :catId)
+    `;
+    await db.execute(insertQuery, { indentId, fyId, facId, indentNo, nextCode, catId }, { autoCommit: true });
+
+    let categoryName = '';
+    if (catId) {
+      const catQuery = `select categoryname from masitemcategories where categoryid = :catId`;
+      const catRes = await db.execute(catQuery, { catId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      if (catRes.rows && catRes.rows.length > 0) {
+        categoryName = catRes.rows[0].CATEGORYNAME || catRes.rows[0].categoryName || '';
+      }
+    }
+
+    return {
+      indentId,
+      indentNo,
+      indentDate: new Date().toLocaleDateString('en-GB'),
+      status: 'I',
+      categoryId: catId,
+      categoryName,
+      exists: true
+    };
+  } catch (error) {
+    console.error('Error generating Indent Header:', error);
+    throw error;
+  }
+}
+
+// Freeze / Finalize Indent (btnFreez_Click)
+async function freezeIndent(facilityId, finYearId, indentId) {
+  try {
+    const facId = Number(facilityId) || 22595;
+    const fyId = Number(finYearId) || 547;
+    const indId = Number(indentId);
+
+    const q1 = `update masAnualIndent set status='C', indentdate=sysdate, entrydate=sysdate, freezdatetime=sysdate where indentid = :indId`;
+    await db.execute(q1, { indId }, { autoCommit: true });
+
+    const q2 = `update anualindent set status='C', freezdatetime=sysdate where indentid = :indId`;
+    await db.execute(q2, { indId }, { autoCommit: true });
+
+    return true;
+  } catch (error) {
+    console.error('Error freezing Indent:', error);
+    throw error;
+  }
+}
+
+// Delete whole Annual Indent (btndelete_Click)
+async function deleteIndent(facilityId, finYearId, indentId) {
+  try {
+    const facId = Number(facilityId) || 22595;
+    const fyId = Number(finYearId) || 547;
+    const indId = Number(indentId);
+
+    const q1 = `delete from anualindent where indentid = :indId and facilityid = :facId and accyrsetid = :fyId`;
+    await db.execute(q1, { indId, facId, fyId }, { autoCommit: true });
+
+    const q2 = `delete from masanualindent where indentid = :indId and facilityid = :facId and accyrsetid = :fyId`;
+    await db.execute(q2, { indId, facId, fyId }, { autoCommit: true });
+
+    return true;
+  } catch (error) {
+    console.error('Error deleting Indent:', error);
     throw error;
   }
 }
@@ -737,6 +931,95 @@ async function getMcAiVsIssuanceReport(finYearId, categoryId, facilityId) {
   }
 }
 
+// Bulk Save/Insert/Update items from uploaded Excel into anualindent table
+async function uploadExcelIndentItems(facilityId, finYearId, indentId, items) {
+  try {
+    const facId = Number(facilityId) || 22595;
+    const fyId = Number(finYearId) || 547;
+    const indId = Number(indentId);
+
+    if (!indId || indId === 0) {
+      throw new Error('Invalid Indent ID for Excel Upload');
+    }
+
+    // Clean up any 0 or null quantity rows for this indent
+    await db.execute(
+      `delete from anualindent where indentid = :indId and (facilityindentqty is null or facilityindentqty <= 0)`,
+      { indId },
+      { autoCommit: true }
+    );
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return { count: 0 };
+    }
+
+    let updatedCount = 0;
+    for (const item of items) {
+      const code = String(item.itemCode || '').trim();
+      if (!code) continue;
+
+      const qty = Number(item.facilityIndentQty) || 0;
+      if (qty <= 0) {
+        // IGNORE items with Annual Indent Qty <= 0
+        continue;
+      }
+
+      const itemQuery = `
+        select m.itemid, nvl(vr.singlerate, 0) rate 
+        from masitems m 
+        left outer join v_itemrate vr on vr.itemid = m.itemid 
+        where upper(m.itemcode) = upper(:code) and rownum = 1
+      `;
+      const itemRes = await db.execute(itemQuery, { code }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      if (!itemRes.rows || itemRes.rows.length === 0) continue;
+
+      const itemId = itemRes.rows[0].ITEMID || itemRes.rows[0].itemid;
+      const rate = Number(item.rate) > 0 ? Number(item.rate) : Number(itemRes.rows[0].RATE || itemRes.rows[0].rate || 0);
+      const cons = Number(item.consumption) || 0;
+      const stock = Number(item.currentStock) || 0;
+
+      const checkQuery = `
+        select anualindentid 
+        from anualindent 
+        where indentid = :indId and itemid = :itemId
+      `;
+      const checkRes = await db.execute(checkQuery, { indId, itemId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+
+      if (checkRes.rows && checkRes.rows.length > 0) {
+        const anualIndentId = checkRes.rows[0].ANUALINDENTID || checkRes.rows[0].anualIndentId;
+        const updateQuery = `
+          update anualindent 
+          set facilityindentqty = :qty,
+              consumption = :cons,
+              currentstock = :stock,
+              rate = :rate
+          where anualindentid = :anualIndentId
+        `;
+        await db.execute(updateQuery, { qty, cons, stock, rate, anualIndentId }, { autoCommit: true });
+        updatedCount++;
+      } else {
+        const idQuery = `select nvl(max(anualindentid), 0) + 1 as nextid from anualindent`;
+        const idRes = await db.execute(idQuery, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+        const nextId = idRes.rows && idRes.rows[0] ? (idRes.rows[0].NEXTID || idRes.rows[0].nextid || 1) : 1;
+
+        const insertQuery = `
+          insert into anualindent 
+          (anualindentid, indentid, facilityid, itemid, itemcode, accyrsetid, facilityindentqty, consumption, currentstock, rate, status, entrydate)
+          values
+          (:nextId, :indId, :facId, :itemId, :code, :fyId, :qty, :cons, :stock, :rate, 'I', sysdate)
+        `;
+        await db.execute(insertQuery, { nextId, indId, facId, itemId, code, fyId, qty, cons, stock, rate }, { autoCommit: true });
+        updatedCount++;
+      }
+    }
+
+    return { count: updatedCount };
+  } catch (error) {
+    console.error('Error in uploadExcelIndentItems:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   getIndentItems,
   getIndentSummary,
@@ -746,14 +1029,19 @@ module.exports = {
   deleteDistribution,
   getMcHospitalAiVsIssuance,
   getDownloadAiFormatData,
+  getIndentCategories,
   getUploadForwardFinYears,
   getUploadForwardList,
   getCreateIndentHeader,
   getCreateIndentItems,
   updateCreateIndentItem,
   deleteCreateIndentItem,
+  generateIndentHeader,
+  freezeIndent,
+  deleteIndent,
   getMedicalCollegeAiDropdowns,
   getMedicalCollegeAiReport,
   getMcAiVsIssuanceDropdowns,
-  getMcAiVsIssuanceReport
+  getMcAiVsIssuanceReport,
+  uploadExcelIndentItems
 };

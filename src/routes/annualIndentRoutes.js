@@ -12,6 +12,7 @@ router.get('/mc-ai-vs-issuance', annualIndentController.getMcHospitalAiVsIssuanc
 router.get('/mc-ai-vs-issuance/dropdowns', annualIndentController.getMcAiVsIssuanceDropdowns);
 router.get('/mc-ai-vs-issuance/report', annualIndentController.getMcAiVsIssuanceReport);
 router.get('/download-format', annualIndentController.getDownloadAiFormatData);
+router.get('/categories', annualIndentController.getIndentCategories);
 router.get('/upload-forward/fin-years', annualIndentController.getUploadForwardFinYears);
 router.get('/upload-forward/list', annualIndentController.getUploadForwardList);
 router.get('/create/header', annualIndentController.getCreateIndentHeader);
@@ -20,6 +21,10 @@ router.get('/medical-college-ai/dropdowns', annualIndentController.getMedicalCol
 router.get('/medical-college-ai', annualIndentController.getMedicalCollegeAiReport);
 router.put('/create/item', annualIndentController.updateCreateIndentItem);
 router.delete('/create/item/:id', annualIndentController.deleteCreateIndentItem);
+router.post('/create/generate-header', annualIndentController.generateIndentHeader);
+router.post('/create/upload-excel', annualIndentController.uploadExcelIndentItems);
+router.post('/create/freeze', annualIndentController.freezeIndent);
+router.delete('/create/indent', annualIndentController.deleteIndent);
 router.post('/distribute', annualIndentController.updateDistribution);
 router.delete('/distribute/:id', annualIndentController.deleteDistribution);
 
