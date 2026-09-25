@@ -12,7 +12,7 @@ async function findByEmail(email) {
                       f.FOOTER1, f.FOOTER2, f.FOOTER3,
                       r.ROLENAME
                FROM USRUSERS u
-               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = u.USERID
+               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
                WHERE UPPER(u.EMAILID) = UPPER(:email)`;
 
@@ -31,7 +31,7 @@ async function findByPhone(phoneNo) {
                       f.FOOTER1, f.FOOTER2, f.FOOTER3,
                       r.ROLENAME
                FROM USRUSERS u
-               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = u.USERID
+               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
                WHERE f.FOOTER3 = :phoneNo`;
 
@@ -50,11 +50,11 @@ async function findByIdentifier(identifier) {
                       f.FOOTER1, f.FOOTER2, f.FOOTER3,
                       r.ROLENAME
                FROM USRUSERS u
-               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = u.USERID
+               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
                WHERE UPPER(u.EMAILID) = UPPER(:cleanId)
                   OR f.FOOTER3 = :cleanId
-                  OR u.DEPMOBILE = :cleanId
+                  OR TO_CHAR(u.DEPMOBILE) = :cleanId
                   OR TO_CHAR(u.USERID) = :cleanId`;
 
   const result = await db.execute(sql, { cleanId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
@@ -117,7 +117,7 @@ async function findFullUserById(userId) {
                       f.FOOTER1, f.FOOTER2, f.FOOTER3,
                       r.ROLENAME
                FROM USRUSERS u
-               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = u.USERID
+               LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
                WHERE u.USERID = :userId`;
   const result = await db.execute(sql, { userId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
