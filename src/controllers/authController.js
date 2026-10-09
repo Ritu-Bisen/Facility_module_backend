@@ -57,7 +57,7 @@ async function loginWithEmail(req, res, next) {
     logger.info(`Login successful for email: ${email}`);
     return res.status(200).json(result);
   } catch (error) {
-    logger.error('Email login error: ' + error.message);
+    logger.error(`Email login error: ${error.message}\n${error.stack}`);
     next(error);
   }
 }

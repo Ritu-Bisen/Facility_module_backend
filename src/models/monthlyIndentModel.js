@@ -721,7 +721,7 @@ async function getFmItemsForFacility(facilityId, itemType, categoryId = 1) {
         group by a.itemid, iss.IssuedQTYNos
     ) bal on bal.itemid = l.itemid
     WHERE (l.MCID = :categoryId OR :categoryId IS NULL OR :categoryId = 0 OR :categoryId = '0') 
-      AND WAREHOUSEID = 2617 
+      AND WAREHOUSEID IN (SELECT WAREHOUSEID FROM MASFACILITYWH WHERE FACILITYID = :facilityId)
       AND CGMSCFM = :itemType
       AND (nvl(READYQTY,0) + nvl(UQQTY,0) + nvl(IWHPIPQTY,0)) > 0
       AND e.edlcat <= (SELECT eldcat FROM masfacilityTypes ty 
@@ -1190,9 +1190,8 @@ async function getOtherItemForFacility(facilityId, itemCode) {
           and sysdate between yr.startdate and yr.enddate
         group by a.itemid, iss.IssuedQTYNos
     ) bal on bal.itemid = l.itemid
-    where mcid = 1
-      and warehouseid = 2617
-      and itemcode = :itemCode
+    where l.warehouseid in (select warehouseid from masfacilitywh where facilityid = :facilityId)
+      and l.itemcode = :itemCode
       and (nvl(READYQTY,0) + nvl(UQQTY,0) + nvl(IWHPIPQTY,0)) > 0
       and e.edlcat <=
       (

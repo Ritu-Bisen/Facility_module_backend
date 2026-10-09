@@ -33,7 +33,7 @@ async function getWards(facilityId, page = 1, limit = 20, searchId = null) {
 }
 
 async function addWard(facilityId, wardCode, wardName, isOpdEntry, pwdString) {
-  const isVisible = isOpdEntry ? 'Y' : 'N';
+  const isVisible = isOpdEntry ? 'Y' : 'N';3
   const query = `
     INSERT INTO MasFacilityWards (FacilityID, WardCode, WardName, ISVISIBLE, PWD)
     VALUES (:facilityId, :wardCode, :wardName, :isVisible, :pwdString)
