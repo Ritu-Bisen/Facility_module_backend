@@ -88,6 +88,18 @@ async function getMcHospitalAiVsIssuance(req, res) {
   }
 }
 
+async function getAyushDownloadFormatData(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 29609;
+    const subCatId = req.query.subCatId || req.query.categoryId || 8;
+    const data = await annualIndentModel.getAyushDownloadFormatData(facilityId, subCatId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getAyushDownloadFormatData:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 async function getDownloadAiFormatData(req, res) {
   try {
     const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
@@ -275,6 +287,7 @@ module.exports = {
   updateDistribution,
   deleteDistribution,
   getMcHospitalAiVsIssuance,
+  getAyushDownloadFormatData,
   getDownloadAiFormatData,
   getIndentCategories,
   getUploadForwardFinYears,

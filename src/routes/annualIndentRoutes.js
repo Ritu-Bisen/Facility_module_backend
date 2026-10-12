@@ -12,6 +12,7 @@ router.get('/mc-ai-vs-issuance', annualIndentController.getMcHospitalAiVsIssuanc
 router.get('/mc-ai-vs-issuance/dropdowns', annualIndentController.getMcAiVsIssuanceDropdowns);
 router.get('/mc-ai-vs-issuance/report', annualIndentController.getMcAiVsIssuanceReport);
 router.get('/download-format', annualIndentController.getDownloadAiFormatData);
+router.get('/ayush/download-format', annualIndentController.getAyushDownloadFormatData);
 router.get('/categories', annualIndentController.getIndentCategories);
 router.get('/upload-forward/fin-years', annualIndentController.getUploadForwardFinYears);
 router.get('/upload-forward/list', annualIndentController.getUploadForwardList);

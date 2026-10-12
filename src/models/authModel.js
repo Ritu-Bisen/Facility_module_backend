@@ -11,23 +11,32 @@ async function findByEmail(email) {
                         u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
                         u.FAILED_ATTEMPTS, u.LOCKOUT_UNTIL,
                         f.FOOTER1, f.FOOTER2, f.FOOTER3,
-                        r.ROLENAME
+                        r.ROLENAME,
+                        fac.FACILITYTYPEID,
+                        ft.FACILITYTYPECODE,
+                        ft.FACILITYTYPEDESC AS FACILITYTYPENAME,
+                        fac.FACILITYNAME, ft.HODID
                  FROM USRUSERS u
                  LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                  LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
+                 LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
+                 LEFT JOIN MASFACILITYTYPES ft ON fac.FACILITYTYPEID = ft.FACILITYTYPEID
                  WHERE UPPER(u.EMAILID) = UPPER(:email)`;
 
     const result = await db.execute(sql, { email }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     return result.rows;
   } catch (err) {
-    // Fallback if FAILED_ATTEMPTS or LOCKOUT_UNTIL columns do not exist in USRUSERS
+    // Fail-safe fallback query selecting facilitytypeid directly from masfacilities
     const fallbackSql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
                                 u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
                                 f.FOOTER1, f.FOOTER2, f.FOOTER3,
-                                r.ROLENAME
+                                r.ROLENAME,
+                                fac.FACILITYTYPEID,
+                                fac.FACILITYNAME
                          FROM USRUSERS u
                          LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                          LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
+                         LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
                          WHERE UPPER(u.EMAILID) = UPPER(:email)`;
 
     const result = await db.execute(fallbackSql, { email }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
@@ -44,10 +53,16 @@ async function findByPhone(phoneNo) {
                         u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
                         u.FAILED_ATTEMPTS, u.LOCKOUT_UNTIL,
                         f.FOOTER1, f.FOOTER2, f.FOOTER3,
-                        r.ROLENAME
+                        r.ROLENAME,
+                        fac.FACILITYTYPEID,
+                        ft.FACILITYTYPECODE,
+                        ft.FACILITYTYPEDESC AS FACILITYTYPENAME,
+                        fac.FACILITYNAME, ft.HODID
                  FROM USRUSERS u
                  LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                  LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
+                 LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
+                 LEFT JOIN MASFACILITYTYPES ft ON fac.FACILITYTYPEID = ft.FACILITYTYPEID
                  WHERE f.FOOTER3 = :phoneNo`;
 
     const result = await db.execute(sql, { phoneNo }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
@@ -56,10 +71,13 @@ async function findByPhone(phoneNo) {
     const fallbackSql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
                                 u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
                                 f.FOOTER1, f.FOOTER2, f.FOOTER3,
-                                r.ROLENAME
+                                r.ROLENAME,
+                                fac.FACILITYTYPEID,
+                                fac.FACILITYNAME
                          FROM USRUSERS u
                          LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                          LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
+                         LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
                          WHERE f.FOOTER3 = :phoneNo`;
 
     const result = await db.execute(fallbackSql, { phoneNo }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
@@ -77,10 +95,16 @@ async function findByIdentifier(identifier) {
                         u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
                         u.FAILED_ATTEMPTS, u.LOCKOUT_UNTIL,
                         f.FOOTER1, f.FOOTER2, f.FOOTER3,
-                        r.ROLENAME
+                        r.ROLENAME,
+                        fac.FACILITYTYPEID,
+                        ft.FACILITYTYPECODE,
+                        ft.FACILITYTYPEDESC AS FACILITYTYPENAME,
+                        fac.FACILITYNAME, ft.HODID
                  FROM USRUSERS u
                  LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                  LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
+                 LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
+                 LEFT JOIN MASFACILITYTYPES ft ON fac.FACILITYTYPEID = ft.FACILITYTYPEID
                  WHERE UPPER(u.EMAILID) = UPPER(:cleanId)
                     OR f.FOOTER3 = :cleanId
                     OR TO_CHAR(u.USERID) = :cleanId`;
@@ -91,16 +115,67 @@ async function findByIdentifier(identifier) {
     const fallbackSql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
                                 u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
                                 f.FOOTER1, f.FOOTER2, f.FOOTER3,
-                                r.ROLENAME
+                                r.ROLENAME,
+                                fac.FACILITYTYPEID,
+                                fac.FACILITYNAME
                          FROM USRUSERS u
                          LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                          LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
+                         LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
                          WHERE UPPER(u.EMAILID) = UPPER(:cleanId)
                             OR f.FOOTER3 = :cleanId
                             OR TO_CHAR(u.USERID) = :cleanId`;
 
     const result = await db.execute(fallbackSql, { cleanId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     return result.rows;
+  }
+}
+
+/**
+ * Direct lookup of FACILITYTYPEID and HODID from MASFACILITIES and MASFACILITYTYPES matching FACILITYID
+ */
+async function getFacilityDetails(facilityId) {
+  if (!facilityId) return { facilityTypeId: null, hodId: null };
+  try {
+    const sql = `SELECT fac.FACILITYTYPEID, ft.HODID, ft.FACILITYTYPECODE, ft.FACILITYTYPEDESC 
+                 FROM MASFACILITIES fac
+                 LEFT JOIN MASFACILITYTYPES ft ON fac.FACILITYTYPEID = ft.FACILITYTYPEID
+                 WHERE fac.FACILITYID = :facilityId`;
+    const result = await db.execute(sql, { facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    if (result.rows && result.rows.length > 0) {
+      const r = result.rows[0];
+      return {
+        facilityTypeId: r.FACILITYTYPEID || null,
+        hodId: r.HODID !== undefined && r.HODID !== null ? Number(r.HODID) : null,
+        facilityTypeCode: r.FACILITYTYPECODE || null,
+        facilityTypeName: r.FACILITYTYPEDESC || null
+      };
+    }
+    return { facilityTypeId: null, hodId: null };
+  } catch (err) {
+    try {
+      const sql2 = `SELECT FACILITYTYPEID FROM MASFACILITIES WHERE FACILITYID = :facilityId`;
+      const result2 = await db.execute(sql2, { facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      return {
+        facilityTypeId: result2.rows && result2.rows.length > 0 ? result2.rows[0].FACILITYTYPEID : null,
+        hodId: null
+      };
+    } catch (e) {
+      return { facilityTypeId: null, hodId: null };
+    }
+  }
+}
+
+/**
+ * Direct lookup of FACILITYTYPEID from MASFACILITIES matching FACILITYID
+ */
+async function getFacilityTypeId(facilityId) {
+  if (!facilityId) return null;
+  try {
+    const details = await getFacilityDetails(facilityId);
+    return details.facilityTypeId;
+  } catch (err) {
+    return null;
   }
 }
 
@@ -248,5 +323,7 @@ module.exports = {
   getSessionId,
   incrementFailedAttempts,
   lockAccount,
-  resetFailedAttempts
+  resetFailedAttempts,
+  getFacilityTypeId,
+  getFacilityDetails
 };

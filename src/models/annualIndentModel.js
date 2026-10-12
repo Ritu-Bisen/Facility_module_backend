@@ -271,10 +271,101 @@ async function getMcHospitalAiVsIssuance(facilityId) {
   }
 }
 
-// Fetch Annual Indent Excel Download Format Data
+// 1. Ayush Download Excel Format Data (GetItemDetail in C#)
+async function getAyushDownloadFormatData(facilityId, subCatId) {
+  try {
+    const usrFacilityID = Number(facilityId) || 29609;
+    const factypeid = String(subCatId || '8').trim();
+    const whereclause = factypeid === '8' ? '' : " and nvl(m.isedl2021,'N')='Y'";
+
+    const query = `
+      select 0 SlNo, m.itemcode,
+             case when length(m.itemname) > 100 then substr(m.itemname, 0, 100) else itemname end itemname,
+             t.itemtypename Formulation,
+             case when length(m.strength1) > 100 then substr(m.strength1, 0, 100) else m.strength1 end Strength,
+             nvl(m.unit, '-') as UNIT,
+             e.edl,
+             sc.catname || ' (' || mt.categoryname || ')' as categoryname,
+             nvl(COSUMPTION_From_1APR_23, 0) as COSUMPTION_From_1APR_25,
+             nvl(cr.CurStock, 0) as CurStock,
+             0 INDENT_26_27,
+             nvl(vr.rates, 0) as Rates
+      from masitems m
+      inner join masitemcategories mt on mt.categoryid = m.categoryid
+      inner join masedl e on e.edlcat = m.edlcat
+      inner join masitemtypes t on t.itemtypeid = m.itemtypeid
+      inner join MasSubItemCategory sc on sc.subcatid = m.subcatid
+      left outer join vlastrate vr on vr.itemid = m.itemid
+      left outer join (
+          select i.itemid, sum(nvl(rb.AbsRqty, 0)) - sum(nvl(x.issueQty, 0)) CurStock
+          from tbFacilityReceiptBatches rb
+          inner join tbfacilityreceiptitems i on rb.FACreceiptitemid = i.FACreceiptitemid
+          inner join tbfacilityreceipts r on r.FACreceiptid = i.FACreceiptid
+          left outer join (
+              select FacilityID, sum(nvl(a.IssueQty, 0)) issueQty, 0 AbsRQty, a.Inwno
+              from tbfacilityoutwards a
+              inner join tbfacilityissueitems tbi on tbi.issueitemid = a.issueitemid
+              inner join tbfacilityissues tb on tb.issueid = tbi.issueid
+              where tb.FacilityID = :usrFacilityID
+              group by a.Inwno, FacilityID
+          ) x on x.inwno = rb.inwno and x.FacilityID = r.FacilityID
+          where (rb.ExpDate >= SysDate or nvl(rb.ExpDate, SysDate) >= SysDate)
+            and r.status = 'C' and r.FacilityID = :usrFacilityID
+          group by i.itemid
+          having sum(nvl(rb.AbsRqty, 0)) - sum(nvl(x.issueQty, 0)) > 0
+      ) cr on cr.itemid = m.ItemID
+      left outer join (
+          select edlitemcode as itemcode, sum(iss_qty) COSUMPTION_From_1APR_23
+          from (
+              select tb.issueid, tbi.itemid, tbi.ISSUEITEMID, m.edlitemcode,
+                     sum(tbo.issueqty) iss_qty, m.unitcount
+              from tbfacilityissues tb
+              inner join tbfacilityissueitems tbi on tbi.issueid = tb.issueid
+              inner join tbfacilityoutwards tbo on tbo.ISSUEITEMID = tbi.ISSUEITEMID
+              inner join tbfacilityreceiptbatches rb on rb.inwno = tbo.inwno
+              inner join vmasitems m on m.itemid = tbi.itemid
+              where tb.status = 'C'
+                and tb.facilityid = :usrFacilityID
+                and tb.issuedate between (select startdate from masaccyearsettings where accyrsetId = 545)
+                                     and (select enddate from masaccyearsettings where accyrsetId = 545)
+              group by tb.issueid, tbi.itemid, tbi.ISSUEITEMID, m.edlitemcode, m.unitcount
+          ) i
+          group by edlitemcode
+      ) Consumption on Consumption.itemcode = m.itemcode
+      where sc.subcatid in (${Number(factypeid) || 8})
+        and m.isfreezed is null ${whereclause}
+      order by m.ayushAIOrder
+    `;
+
+    const result = await db.execute(query, { usrFacilityID }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const rows = result.rows || [];
+    return rows.map((r, idx) => ({
+      slNo: idx + 1,
+      itemCode: r.ITEMCODE || r.itemcode || '-',
+      itemName: r.ITEMNAME || r.itemname || '-',
+      formulation: r.FORMULATION || r.formulation || '-',
+      strength: r.STRENGTH || r.strength || '-',
+      unit: r.UNIT || r.unit || '-',
+      edl: r.EDL || r.edl || '-',
+      categoryName: r.CATEGORYNAME || r.categoryname || '-',
+      cosumptionFrom1Apr25: r.COSUMPTION_FROM_1APR_25 !== undefined ? r.COSUMPTION_FROM_1APR_25 : 0,
+      curStock: r.CURSTOCK !== undefined ? r.CURSTOCK : 0,
+      indent2627: r.INDENT_26_27 !== undefined ? r.INDENT_26_27 : 0,
+      rates: r.RATES !== undefined ? r.RATES : 0,
+      consumption: r.COSUMPTION_FROM_1APR_25 !== undefined ? r.COSUMPTION_FROM_1APR_25 : 0,
+      currentStock: r.CURSTOCK !== undefined ? r.CURSTOCK : 0,
+      rate: r.RATES !== undefined ? r.RATES : 0
+    }));
+  } catch (error) {
+    console.error('Error fetching Ayush Download Format Data:', error);
+    throw error;
+  }
+}
+
+// 2. Annual Indent Excel Download Format Data (DHS / General Format Query)
 async function getDownloadAiFormatData(facilityId, categoryId) {
   try {
-    const facId = Number(facilityId) || 22595;
+    const usrFacilityID = Number(facilityId) || 22595;
     const inputCatId = Number(categoryId) || 0;
 
     let realCatId = inputCatId;
@@ -289,81 +380,196 @@ async function getDownloadAiFormatData(facilityId, categoryId) {
       }
     }
 
-    let categoryClause = '';
-    const binds = { facId };
+    const binds = { usrFacilityID };
+    let categoryClause = 'mc.MCID IN (1, 2)';
     if (realCatId > 0) {
-      categoryClause = ' and mt.categoryid = :realCatId ';
+      categoryClause = 'mt.categoryid = :realCatId';
       binds.realCatId = realCatId;
     }
 
     const query = `
-      select 0 SlNo, Formate.itemcode, substr(Formate.itemname,1,100) as itemname, Formate.Formulation, substr(Formate.Strength,1,100) Strength, Formate.GroupName,
-             Formate.edl, nvl(iss.FacIssueqty,0) as COSUMPTION, nvl(cr.CurStock,0) as Current_Stock, 0 as INDENT_26_27, 
-             nvl(vr.singlerate,0) as Rate, Formate.PACKAGINGUNIT, Formate.categoryname 
-      from (
-          select 0 SlNo, m.itemcode, m.ItemID, case when length(m.itemname)>100 then substr(m.itemname,0,100) else itemname end itemname, 
-                 t.itemtypename Formulation, case when length(m.strength1)>100 then substr(m.strength1,0,100) else m.strength1 end Strength, 
-                 g.groupname GroupName, nvl(e.edl, 'EDL') edl, 0 COSUMPTION_From_1APR_24, 0 Current_Stock, 0 INDENT_25_26, m.isedl2021, mt.categoryname,
-                 nvl(m.packingqty, nvl(m.unitcount, 1)) as PACKAGINGUNIT,
-                 case when isedl2021='Y' then 'Yes' else 'No' end as EDL2021, case when EDL2025='Y' then 'Yes' else 'No' end as EDL2025,
-                 case when (edl2025flag='COMMON' or edl2025flag='DHS') then 'Yes' else 'No' end as IsIPHS, mc.mcid
-          from masitems m 
-          inner join masitemgroups g on m.groupid=g.groupid  
-          inner join masitemcategories mt on mt.categoryid=m.categoryid 
-          left outer join masitemmaincategory mc on mc.MCID=mt.MCID
-          left outer join masedl e on e.edlcat=m.edlcat 
-          left outer join masitemtypes t on t.itemtypeid=m.itemtypeid
-          where m.isfreez_itpr is null 
-            ${categoryClause}
+      SELECT
+          0 AS SlNo,
+          Formate.itemcode,
+          SUBSTR(Formate.itemname, 1, 100) AS itemname,
+          Formate.Formulation,
+          SUBSTR(Formate.Strength, 1, 100) AS Strength,
+          Formate.GroupName,
+          Formate.edl,
+          NVL(iss.FacIssueqty, 0) AS Issued_From_WH_01_Apr_25_to_31st_Oct_25,
+          0 AS Actual_Consumption_From_01_April_25_to_31st_Oct_25,
+          0 AS Estimated_Consumption_For_One_Year_From_01_April_25_to_31st_March_26,
+          NVL(cr.CurStock, 0) AS Current_Stock,
+          0 AS ANNUAL_INDENT_26_27,
+          NVL(vr.singlerate, 0) AS Rate,
+          Formate.categoryname
+      FROM
+      (
+          SELECT
+              0 AS SlNo,
+              m.itemcode,
+              m.ItemID,
+              CASE
+                  WHEN LENGTH(m.itemname) > 100
+                  THEN SUBSTR(m.itemname, 1, 100)
+                  ELSE m.itemname
+              END AS itemname,
+              t.itemtypename AS Formulation,
+              CASE
+                  WHEN LENGTH(m.strength1) > 100
+                  THEN SUBSTR(m.strength1, 1, 100)
+                  ELSE m.strength1
+              END AS Strength,
+              g.groupname AS GroupName,
+              e.edl,
+              0 AS COSUMPTION_From_1APR_24,
+              0 AS Current_Stock,
+              0 AS INDENT_25_26,
+              m.isedl2021,
+              mt.categoryname,
+              CASE
+                  WHEN m.isedl2021 = 'Y' THEN 'Yes'
+                  ELSE 'No'
+              END AS EDL2021,
+              CASE
+                  WHEN m.EDL2025 = 'Y' THEN 'Yes'
+                  ELSE 'No'
+              END AS EDL2025,
+              CASE
+                  WHEN m.edl2025flag IN ('COMMON', 'DHS') THEN 'Yes'
+                  ELSE 'No'
+              END AS IsIPHS,
+              mc.mcid
+          FROM masitems m
+          INNER JOIN masitemai ai
+              ON ai.itemid = m.itemid
+             AND ai.ACCYRSETID = 547
+          INNER JOIN masitemgroups g
+              ON m.groupid = g.groupid
+          INNER JOIN masitemcategories mt
+              ON mt.categoryid = m.categoryid
+          INNER JOIN masitemmaincategory mc
+              ON mc.MCID = mt.MCID
+          INNER JOIN masedl e
+              ON e.edlcat = m.edlcat
+          INNER JOIN masitemtypes t
+              ON t.itemtypeid = m.itemtypeid
+          WHERE ${categoryClause}
+            AND m.isfreez_itpr IS NULL
+            AND m.edlcat <= (
+                SELECT t.edlindent
+                FROM masfacilities f
+                INNER JOIN masfacilitytypes t
+                    ON t.facilitytypeid = f.facilitytypeid
+                WHERE f.facilityid = :usrFacilityID
+            )
       ) Formate
-      left outer join v_itemrate vr on vr.itemid=Formate.itemid
-      left outer join (
-          select ii.itemid, sum(tbo.issueqty) as FacIssueqty 
-          from tbfacilityissues i
-          inner join tbfacilityissueitems ii on ii.issueid=i.issueid
-          inner join tbfacilityoutwards tbo on tbo.issueitemid=ii.issueitemid
-          where i.status='C' and i.facilityid = :facId
-          group by ii.itemid
-      ) iss on iss.itemid=Formate.ItemID
-      left outer join (
-          select itemid, sum(ReadyForIssue) as CurStock 
-          from (
-              select b.batchno, b.expdate, b.inwno, t.facilityid, i.itemid, 
-                     (case when b.qastatus ='1' then (nvl(b.absrqty,0) - nvl(iq.issueqty,0)) end) ReadyForIssue  
-              from tbfacilityreceiptbatches b   
-              inner join tbfacilityreceiptitems i on b.facreceiptitemid=i.facreceiptitemid 
-              inner join tbfacilityreceipts t on t.facreceiptid=i.facreceiptid                  
-              left outer join (  
-                  select fs.facilityid, fsi.itemid, ftbo.inwno, sum(nvl(ftbo.issueqty,0)) issueqty   
-                  from tbfacilityissues fs 
-                  inner join tbfacilityissueitems fsi on fsi.issueid=fs.issueid 
-                  inner join tbfacilityoutwards ftbo on ftbo.issueitemid=fsi.issueitemid 
-                  where fs.status = 'C' and fs.facilityid = :facId
-                  group by fsi.itemid, fs.facilityid, ftbo.inwno                     
-              ) iq on b.inwno = Iq.inwno and iq.itemid=i.itemid and iq.facilityid=t.facilityid                 
-              Where T.Status = 'C' And (b.Whissueblock = 0 or b.Whissueblock is null) and b.expdate > sysdate 
-                and t.facilityid = :facId
-          ) group by itemid having sum(ReadyForIssue) > 0
-      ) cr on cr.itemid=Formate.ItemID
-      order by DECODE(isedl2021, 'Y',1), 
-               DECODE(categoryname, 'DRUGS',1, 'CONSUMABLE AND SURGICAL',2, 'SURGICALS AND SUTURES',3), groupname, itemname
+
+      LEFT JOIN v_itemrate vr
+          ON vr.itemid = Formate.itemid
+
+      LEFT JOIN
+      (
+          SELECT
+              ii.itemid,
+              SUM(tbo.issueqty) AS FacIssueqty
+          FROM tbfacilityissues i
+          INNER JOIN tbfacilityissueitems ii
+              ON ii.issueid = i.issueid
+          INNER JOIN tbfacilityoutwards tbo
+              ON tbo.issueitemid = ii.issueitemid
+          INNER JOIN tbfacilityreceiptbatches rb
+              ON rb.inwno = tbo.inwno
+          WHERE i.status = 'C'
+            AND i.facilityid = :usrFacilityID
+            AND i.issuedate >= DATE '2025-04-01'
+            AND i.issuedate < DATE '2026-04-01'
+          GROUP BY ii.itemid
+      ) iss
+          ON iss.itemid = Formate.ItemID
+
+      LEFT JOIN
+      (
+          SELECT
+              itemid,
+              SUM(ReadyForIssue) AS CurStock
+          FROM
+          (
+              SELECT
+                  b.batchno,
+                  b.expdate,
+                  b.inwno,
+                  t.facilityid,
+                  i.itemid,
+                  CASE
+                      WHEN b.qastatus = '1'
+                      THEN NVL(b.absrqty, 0) - NVL(iq.issueqty, 0)
+                  END AS ReadyForIssue
+              FROM tbfacilityreceiptbatches b
+              INNER JOIN tbfacilityreceiptitems i
+                  ON b.facreceiptitemid = i.facreceiptitemid
+              INNER JOIN tbfacilityreceipts t
+                  ON t.facreceiptid = i.facreceiptid
+              LEFT JOIN
+              (
+                  SELECT
+                      fs.facilityid,
+                      fsi.itemid,
+                      ftbo.inwno,
+                      SUM(NVL(ftbo.issueqty, 0)) AS issueqty
+                  FROM tbfacilityissues fs
+                  INNER JOIN tbfacilityissueitems fsi
+                      ON fsi.issueid = fs.issueid
+                  INNER JOIN tbfacilityoutwards ftbo
+                      ON ftbo.issueitemid = fsi.issueitemid
+                  WHERE fs.status = 'C'
+                    AND fs.facilityid = :usrFacilityID
+                  GROUP BY
+                      fsi.itemid,
+                      fs.facilityid,
+                      ftbo.inwno
+              ) iq
+                  ON b.inwno = iq.inwno
+                 AND iq.itemid = i.itemid
+                 AND iq.facilityid = t.facilityid
+              WHERE t.status = 'C'
+                AND (b.Whissueblock = 0 OR b.Whissueblock IS NULL)
+                AND b.expdate > SYSDATE
+                AND t.facilityid = :usrFacilityID
+          )
+          GROUP BY itemid
+          HAVING SUM(ReadyForIssue) > 0
+      ) cr
+          ON cr.itemid = Formate.ItemID
+
+      ORDER BY
+          DECODE(Formate.isedl2021, 'Y', 1),
+          DECODE(
+              Formate.categoryname,
+              'DRUGS', 1,
+              'CONSUMABLE AND SURGICAL', 2,
+              'SURGICALS AND SUTURES', 3
+          ),
+          Formate.groupname,
+          Formate.itemname
     `;
 
     const result = await db.execute(query, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const rows = result.rows || [];
     return rows.map((r, idx) => ({
       slNo: idx + 1,
-      itemCode: r.ITEMCODE || r.itemCode || '-',
-      itemName: r.ITEMNAME || r.itemName || '-',
+      itemCode: r.ITEMCODE || r.itemcode || '-',
+      itemName: r.ITEMNAME || r.itemname || '-',
       formulation: r.FORMULATION || r.formulation || '-',
       strength: r.STRENGTH || r.strength || '-',
-      groupName: r.GROUPNAME || r.groupName || '-',
+      groupName: r.GROUPNAME || r.groupname || '-',
       edl: r.EDL || r.edl || '-',
-      cosumption: r.COSUMPTION || 0,
-      currentStock: r.CURRENT_STOCK || r.current_Stock || 0,
-      indent2627: r.INDENT_26_27 || 0,
-      rate: r.RATE || r.rate || 0,
-      packagingUnit: r.PACKAGINGUNIT || r.packagingUnit || 1,
+      issuedFromWh: r.ISSUED_FROM_WH_01_APR_25_TO_31ST_OCT_25 !== undefined ? r.ISSUED_FROM_WH_01_APR_25_TO_31ST_OCT_25 : 0,
+      actualConsumption: r.ACTUAL_CONSUMPTION_FROM_01_APRIL_25_TO_31ST_OCT_25 !== undefined ? r.ACTUAL_CONSUMPTION_FROM_01_APRIL_25_TO_31ST_OCT_25 : 0,
+      estimatedConsumption: r.ESTIMATED_CONSUMPTION_FOR_ONE_YEAR_FROM_01_APRIL_25_TO_31ST_MARCH_26 !== undefined ? r.ESTIMATED_CONSUMPTION_FOR_ONE_YEAR_FROM_01_APRIL_25_TO_31ST_MARCH_26 : 0,
+      currentStock: r.CURRENT_STOCK !== undefined ? r.CURRENT_STOCK : 0,
+      annualIndent2627: r.ANNUAL_INDENT_26_27 !== undefined ? r.ANNUAL_INDENT_26_27 : 0,
+      rate: r.RATE !== undefined ? r.RATE : 0,
       categoryName: r.CATEGORYNAME || r.categoryname || '-'
     }));
   } catch (error) {
@@ -373,25 +579,40 @@ async function getDownloadAiFormatData(facilityId, categoryId) {
 }
 
 // Fetch Item Categories for Download Excel Format Dropdown
-async function getIndentCategories() {
+async function getIndentCategories(usrFacilityID) {
   try {
     const query = `
-      select s.subcatid as categoryid, 
-             s.catname || ' (' || c.categoryname || ')' as categoryname
-      from massubitemcategory s
-      inner join masitemcategories c on c.categoryid = s.categoryid
-      union all
-      select c.categoryid as categoryid,
-             c.categoryname as categoryname
-      from masitemcategories c
-      where c.categoryid not in (select distinct categoryid from massubitemcategory where categoryid is not null)
-      order by categoryname
+      SELECT
+        sc.subcatid AS subcatid,
+        c.categoryid AS categoryid,
+        sc.catname || ' (' || c.categoryname || ')' AS categoryname
+      FROM masitemcategories c
+      INNER JOIN MasSubItemCategory sc
+        ON sc.categoryid = c.categoryid
+      WHERE c.categoryid IN (61, 59, 60, 58, 54)
+        AND sc.subcatid NOT IN (
+          SELECT CASE
+                   WHEN AYFACTYPEID IN (13, 11) THEN 0
+                   ELSE 7
+                 END
+          FROM masfacilities
+          WHERE facilityid = :usrFacilityID
+        )
+      ORDER BY sc.subcatid
     `;
-    const result = await db.execute(query, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+
+    const result = await db.execute(
+      query,
+      { usrFacilityID },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+
     return (result.rows || []).map(r => ({
-      categoryId: r.CATEGORYID || r.categoryId,
-      categoryName: r.CATEGORYNAME || r.categoryName
+      subcatId: r.SUBCATID,
+      categoryId: r.CATEGORYID,
+      categoryName: r.CATEGORYNAME
     }));
+
   } catch (error) {
     console.error('Error fetching Indent Categories:', error);
     throw error;
@@ -426,22 +647,6 @@ async function getUploadForwardList(facilityId, finYearId) {
     const facId = Number(facilityId) || 22595;
     const fyId = Number(finYearId) || 547;
 
-    // Check count for CheckAnualindent() logic: count <= 3 allows adding new indent
-    let canAdd = false;
-    try {
-      const cntQuery = `select count(indentid) cnt from masanualindent where facilityid = :facId and accyrsetid = :fyId`;
-      const cntResult = await db.execute(cntQuery, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-      if (cntResult.rows && cntResult.rows.length > 0) {
-        const cnt = Number(cntResult.rows[0].CNT || cntResult.rows[0].cnt || 0);
-        canAdd = (cnt <= 3);
-      } else {
-        canAdd = true;
-      }
-    } catch (e) {
-      console.warn('Failed to check indent count:', e.message);
-      canAdd = true;
-    }
-
     const query = `
       select null SlNo, a.DispatchNo, to_char(a.DispatchDate,'dd-mm-yyyy') DispatchDate, a.indentid NOCID, 
              a.indentno NOCNumber, to_char(a.indentdate,'dd-mm-yyyy') NOCDATE, 
@@ -470,6 +675,33 @@ async function getUploadForwardList(facilityId, finYearId) {
 
     const result = await db.execute(query, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const rows = result.rows || [];
+
+    // Check facility type / role for DH
+    let isDh = false;
+    try {
+      const facCheckRes = await db.execute(
+        `select f.facilityname, ft.facilitytypecode, ft.facilitytypedesc 
+         from masfacilities f 
+         left outer join masfacilitytypes ft on f.facilitytypeid = ft.facilitytypeid 
+         where f.facilityid = :facId`,
+        { facId },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      if (facCheckRes.rows && facCheckRes.rows.length > 0) {
+        const fRow = facCheckRes.rows[0];
+        const fCode = String(fRow.FACILITYTYPECODE || fRow.facilitytypecode || '').toUpperCase();
+        const fDesc = String(fRow.FACILITYTYPEDESC || fRow.facilitytypedesc || '').toUpperCase();
+        const fName = String(fRow.FACILITYNAME || fRow.facilityname || '').toUpperCase();
+        if (fCode === 'DH' || fCode.includes('DH') || fDesc.includes('DH') || fDesc.includes('DISTRICT HOSPITAL') || fName.startsWith('DH ') || fName.includes('DISTRICT HOSPITAL')) {
+          isDh = true;
+        }
+      }
+    } catch (e) {
+      console.error('Error checking facility type for DH:', e);
+    }
+
+    // If DH: only allow adding if there are no existing indents in that year
+    const canAdd = isDh ? (rows.length === 0) : true;
     const list = rows.map((r, idx) => ({
       slNo: idx + 1,
       nocId: r.NOCID || r.nocId,
@@ -681,28 +913,49 @@ async function generateIndentHeader(facilityId, finYearId, categoryId) {
     const fyId = Number(finYearId) || 547;
     const catId = categoryId ? Number(categoryId) : null;
 
+    // Check facility type to see if it's Medical College / DME
+    const facTypeRes = await db.execute(
+      `select facilitytypeid from masfacilities where facilityid = :facId`,
+      { facId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    const facTypeId = facTypeRes.rows && facTypeRes.rows[0] ? String(facTypeRes.rows[0].FACILITYTYPEID || facTypeRes.rows[0].facilitytypeid) : '';
+
+    let supplierCode = 'AI';
+    if (facTypeId === '364' || facTypeId === '378' || facTypeId === '368') {
+      const aiTypeCheck = await db.execute(
+        `select count(indentid) cnt from masanualindent where nonedlindenttype is null and isreagent is null and facilityid = :facId and accyrsetid = :fyId and status = 'C' and isrevise is null`,
+        { facId, fyId },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      if (aiTypeCheck.rows && aiTypeCheck.rows[0] && Number(aiTypeCheck.rows[0].CNT || aiTypeCheck.rows[0].cnt) > 0) {
+        supplierCode = 'RI';
+      }
+    }
+
     // Get year code
     const yrQuery = `select shaccyear from masAccYearSettings where accyrsetid = :fyId`;
     const yrRes = await db.execute(yrQuery, { fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const shYear = yrRes.rows && yrRes.rows[0] ? (yrRes.rows[0].SHACCYEAR || yrRes.rows[0].shaccyear || '26-27') : '26-27';
 
-    // Auto generate code: facId/AI00001/shYear
+    // Auto generate code: facId/supplierCode00001/shYear
     const seqQuery = `select nvl(max(auto_aicode), 0) + 1 as nextcode from masAnualIndent where facilityid = :facId and accyrsetid = :fyId`;
     const seqRes = await db.execute(seqQuery, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const nextCode = seqRes.rows && seqRes.rows[0] ? (seqRes.rows[0].NEXTCODE || seqRes.rows[0].nextcode || 1) : 1;
     const codeStr = String(nextCode).padStart(5, '0');
-    const indentNo = `${facId}/AI${codeStr}/${shYear}`;
+    const indentNo = `${facId}/${supplierCode}${codeStr}/${shYear}`;
 
     // Get Next Indent ID
     const idQuery = `select nvl(max(indentid), 0) + 1 as nextid from masAnualIndent`;
     const idRes = await db.execute(idQuery, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const indentId = idRes.rows && idRes.rows[0] ? (idRes.rows[0].NEXTID || idRes.rows[0].nextid || 1) : 1;
 
+    const isRevise = supplierCode === 'RI' ? 'Y' : null;
     const insertQuery = `
-      insert into masAnualIndent (indentid, AccYrSetID, FacilityID, indentno, indentdate, Status, auto_aicode, AIcategoryid)
-      values (:indentId, :fyId, :facId, :indentNo, sysdate, 'I', :nextCode, :catId)
+      insert into masAnualIndent (indentid, AccYrSetID, FacilityID, indentno, indentdate, Status, auto_aicode, AIcategoryid, isrevise)
+      values (:indentId, :fyId, :facId, :indentNo, sysdate, 'I', :nextCode, :catId, :isRevise)
     `;
-    await db.execute(insertQuery, { indentId, fyId, facId, indentNo, nextCode, catId }, { autoCommit: true });
+    await db.execute(insertQuery, { indentId, fyId, facId, indentNo, nextCode, catId, isRevise }, { autoCommit: true });
 
     let categoryName = '';
     if (catId) {
@@ -958,14 +1211,14 @@ async function uploadExcelIndentItems(facilityId, finYearId, indentId, items) {
       const code = String(item.itemCode || '').trim();
       if (!code) continue;
 
-      const qty = Number(item.facilityIndentQty) || 0;
-      if (qty <= 0) {
+      const rawQty = Number(item.facilityIndentQty) || 0;
+      if (rawQty <= 0) {
         // IGNORE items with Annual Indent Qty <= 0
         continue;
       }
 
       const itemQuery = `
-        select m.itemid, nvl(vr.singlerate, 0) rate 
+        select m.itemid, nvl(m.unitcount, 1) unitcount, nvl(vr.singlerate, 0) rate 
         from masitems m 
         left outer join v_itemrate vr on vr.itemid = m.itemid 
         where upper(m.itemcode) = upper(:code) and rownum = 1
@@ -974,9 +1227,19 @@ async function uploadExcelIndentItems(facilityId, finYearId, indentId, items) {
       if (!itemRes.rows || itemRes.rows.length === 0) continue;
 
       const itemId = itemRes.rows[0].ITEMID || itemRes.rows[0].itemid;
+      const unitCount = Number(itemRes.rows[0].UNITCOUNT || itemRes.rows[0].unitcount || 1);
       const rate = Number(item.rate) > 0 ? Number(item.rate) : Number(itemRes.rows[0].RATE || itemRes.rows[0].rate || 0);
       const cons = Number(item.consumption) || 0;
+      const actCons = Number(item.actualConsumption) || 0;
+      const projCons = Number(item.projectedConsumption) || 0;
       const stock = Number(item.currentStock) || 0;
+
+      // Calculate fin indent qty matching C# logic
+      let qty = rawQty;
+      if (unitCount > 1) {
+        const skuIndent = Math.floor(rawQty / unitCount);
+        qty = skuIndent > 0 ? skuIndent * unitCount : rawQty;
+      }
 
       const checkQuery = `
         select anualindentid 
@@ -991,11 +1254,13 @@ async function uploadExcelIndentItems(facilityId, finYearId, indentId, items) {
           update anualindent 
           set facilityindentqty = :qty,
               consumption = :cons,
+              actualconsumption = :actCons,
+              projectedconsumption = :projCons,
               currentstock = :stock,
               rate = :rate
           where anualindentid = :anualIndentId
         `;
-        await db.execute(updateQuery, { qty, cons, stock, rate, anualIndentId }, { autoCommit: true });
+        await db.execute(updateQuery, { qty, cons, actCons, projCons, stock, rate, anualIndentId }, { autoCommit: true });
         updatedCount++;
       } else {
         const idQuery = `select nvl(max(anualindentid), 0) + 1 as nextid from anualindent`;
@@ -1004,11 +1269,11 @@ async function uploadExcelIndentItems(facilityId, finYearId, indentId, items) {
 
         const insertQuery = `
           insert into anualindent 
-          (anualindentid, indentid, facilityid, itemid, itemcode, accyrsetid, facilityindentqty, consumption, currentstock, rate, status, entrydate)
+          (anualindentid, indentid, facilityid, itemid, itemcode, accyrsetid, facilityindentqty, consumption, actualconsumption, projectedconsumption, currentstock, rate, status, entrydate)
           values
-          (:nextId, :indId, :facId, :itemId, :code, :fyId, :qty, :cons, :stock, :rate, 'I', sysdate)
+          (:nextId, :indId, :facId, :itemId, :code, :fyId, :qty, :cons, :actCons, :projCons, :stock, :rate, 'I', sysdate)
         `;
-        await db.execute(insertQuery, { nextId, indId, facId, itemId, code, fyId, qty, cons, stock, rate }, { autoCommit: true });
+        await db.execute(insertQuery, { nextId, indId, facId, itemId, code, fyId, qty, cons, actCons, projCons, stock, rate }, { autoCommit: true });
         updatedCount++;
       }
     }
@@ -1028,6 +1293,7 @@ module.exports = {
   updateDistribution,
   deleteDistribution,
   getMcHospitalAiVsIssuance,
+  getAyushDownloadFormatData,
   getDownloadAiFormatData,
   getIndentCategories,
   getUploadForwardFinYears,

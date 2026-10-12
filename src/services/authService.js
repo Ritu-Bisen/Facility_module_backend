@@ -9,12 +9,18 @@ const { generateTokens, generateTempMfaToken } = require('../utils/jwtHelper');
  * Build a JWT payload from a user row
  */
 function buildTokenPayload(user, sessionId) {
+  const facTypeId = user.FACILITYTYPEID || user.facilityTypeId || user.facilitytypeid || null;
   return {
     userId: user.USERID,
     emailId: user.EMAILID,
     firstName: user.FIRSTNAME,
     lastName: user.LASTNAME,
     facilityId: user.FACILITYID,
+    facilityTypeId: facTypeId,
+    facilitytypeid: facTypeId,
+    facilityTypeCode: user.FACILITYTYPECODE,
+    facilityType: user.FACILITYTYPECODE || (facTypeId ? String(facTypeId) : null),
+    facilityTypeName: user.FACILITYTYPENAME,
     roleId: user.ROLEID,
     roleName: user.ROLENAME,
     sessionId: sessionId
@@ -175,6 +181,17 @@ async function loginWithEmail(email, passwordOrOtp) {
   const sessionId = crypto.randomUUID();
   await authModel.updateSessionId(user.USERID, sessionId);
 
+  // Ensure facilityTypeId and hodId are retrieved from MASFACILITIES matching facilityId
+  let facTypeId = user.FACILITYTYPEID;
+  let hodId = user.HODID !== undefined && user.HODID !== null ? Number(user.HODID) : null;
+  if ((!facTypeId || hodId === null) && user.FACILITYID) {
+    const details = await authModel.getFacilityDetails(user.FACILITYID);
+    if (!facTypeId) facTypeId = details.facilityTypeId;
+    if (hodId === null) hodId = details.hodId;
+    user.FACILITYTYPEID = facTypeId;
+    user.HODID = hodId;
+  }
+
   // Generate JWT tokens
   const tokenPayload = buildTokenPayload(user, sessionId);
   const { accessToken, refreshToken } = generateTokens(tokenPayload);
@@ -189,6 +206,14 @@ async function loginWithEmail(email, passwordOrOtp) {
       firstName: user.FIRSTNAME,
       lastName: user.LASTNAME,
       facilityId: user.FACILITYID,
+      facilityTypeId: facTypeId || null,
+      facilitytypeid: facTypeId || null,
+      hodId: hodId,
+      hodid: hodId,
+      facilityTypeCode: user.FACILITYTYPECODE || null,
+      facilityType: user.FACILITYTYPECODE || (facTypeId ? String(facTypeId) : null),
+      facilityTypeName: user.FACILITYTYPENAME || null,
+      facilityName: user.FACILITYNAME || null,
       roleId: user.ROLEID,
       roleName: user.ROLENAME,
       footer1: user.FOOTER1,
@@ -277,6 +302,20 @@ async function loginWithPhone(phoneNo, passwordOrOtp) {
   const sessionId = crypto.randomUUID();
   await authModel.updateSessionId(user.USERID, sessionId);
 
+  // Ensure facilityTypeId and hodId are retrieved from MASFACILITIES matching facilityId
+  let facTypeId = user.FACILITYTYPEID;
+  let hodId = user.HODID ?? null;
+  if (user.FACILITYID) {
+    const facDetails = await authModel.getFacilityDetails(user.FACILITYID);
+    if (facDetails) {
+      facTypeId = facDetails.facilityTypeId || facTypeId;
+      hodId = facDetails.hodId ?? hodId;
+      user.FACILITYTYPEID = facTypeId;
+      user.FACILITYTYPECODE = facDetails.facilityTypeCode || user.FACILITYTYPECODE;
+      user.FACILITYTYPENAME = facDetails.facilityTypeName || user.FACILITYTYPENAME;
+    }
+  }
+
   // Generate JWT tokens
   const tokenPayload = buildTokenPayload(user, sessionId);
   const { accessToken, refreshToken } = generateTokens(tokenPayload);
@@ -291,6 +330,14 @@ async function loginWithPhone(phoneNo, passwordOrOtp) {
       firstName: user.FIRSTNAME,
       lastName: user.LASTNAME,
       facilityId: user.FACILITYID,
+      facilityTypeId: facTypeId || null,
+      facilitytypeid: facTypeId || null,
+      hodId: hodId,
+      hodid: hodId,
+      facilityTypeCode: user.FACILITYTYPECODE || null,
+      facilityType: user.FACILITYTYPECODE || (facTypeId ? String(facTypeId) : null),
+      facilityTypeName: user.FACILITYTYPENAME || null,
+      facilityName: user.FACILITYNAME || null,
       roleId: user.ROLEID,
       roleName: user.ROLENAME,
       footer1: user.FOOTER1,
@@ -399,6 +446,20 @@ async function verifyMfa(userId, otp) {
   const sessionId = crypto.randomUUID();
   await authModel.updateSessionId(user.USERID, sessionId);
 
+  // Ensure facilityTypeId and hodId are retrieved from MASFACILITIES matching facilityId
+  let facTypeId = user.FACILITYTYPEID;
+  let hodId = user.HODID ?? null;
+  if (user.FACILITYID) {
+    const facDetails = await authModel.getFacilityDetails(user.FACILITYID);
+    if (facDetails) {
+      facTypeId = facDetails.facilityTypeId || facTypeId;
+      hodId = facDetails.hodId ?? hodId;
+      user.FACILITYTYPEID = facTypeId;
+      user.FACILITYTYPECODE = facDetails.facilityTypeCode || user.FACILITYTYPECODE;
+      user.FACILITYTYPENAME = facDetails.facilityTypeName || user.FACILITYTYPENAME;
+    }
+  }
+
   // Generate JWT tokens
   const tokenPayload = buildTokenPayload(user, sessionId);
   const { accessToken, refreshToken } = generateTokens(tokenPayload);
@@ -413,6 +474,14 @@ async function verifyMfa(userId, otp) {
       firstName: user.FIRSTNAME,
       lastName: user.LASTNAME,
       facilityId: user.FACILITYID,
+      facilityTypeId: facTypeId || null,
+      facilitytypeid: facTypeId || null,
+      hodId: hodId,
+      hodid: hodId,
+      facilityTypeCode: user.FACILITYTYPECODE || null,
+      facilityType: user.FACILITYTYPECODE || (facTypeId ? String(facTypeId) : null),
+      facilityTypeName: user.FACILITYTYPENAME || null,
+      facilityName: user.FACILITYNAME || null,
       roleId: user.ROLEID,
       roleName: user.ROLENAME,
       footer1: user.FOOTER1,
