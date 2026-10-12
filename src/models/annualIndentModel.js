@@ -959,10 +959,16 @@ async function generateIndentHeader(facilityId, finYearId, categoryId) {
 
     let categoryName = '';
     if (catId) {
-      const catQuery = `select categoryname from masitemcategories where categoryid = :catId`;
+      const catQuery = `
+        select coalesce(
+          (select sub.catname || ' (' || mc2.categoryname || ')' from massubitemcategory sub inner join masitemcategories mc2 on mc2.categoryid = sub.categoryid where sub.subcatid = :catId),
+          (select categoryname from masitemcategories where categoryid = :catId),
+          'General'
+        ) as catname from dual
+      `;
       const catRes = await db.execute(catQuery, { catId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
       if (catRes.rows && catRes.rows.length > 0) {
-        categoryName = catRes.rows[0].CATEGORYNAME || catRes.rows[0].categoryName || '';
+        categoryName = catRes.rows[0].CATNAME || catRes.rows[0].catname || '';
       }
     }
 
