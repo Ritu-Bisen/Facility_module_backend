@@ -17,6 +17,7 @@ router.get('/reagent-non-edl/download-format', annualIndentController.getDownloa
 router.get('/ayush/download-format', annualIndentController.getAyushDownloadFormatData);
 router.get('/categories', annualIndentController.getIndentCategories);
 router.get('/upload-forward/fin-years', annualIndentController.getUploadForwardFinYears);
+router.get('/upload-forward/list', annualIndentController.getUploadForwardList);
 router.get('/non-edl/upload-forward/list', annualIndentController.getNonEdlUploadForwardList);
 router.get('/non-edl/create/fin-years', annualIndentController.getNonEdlCreateFinYears);
 router.get('/non-edl/create/header', annualIndentController.getNonEdlCreateIndentHeader);
