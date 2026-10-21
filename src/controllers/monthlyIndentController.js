@@ -108,10 +108,11 @@ async function createNoc(req, res) {
     // Block creation if an incomplete NOC already exists
     const existing = await monthlyIndentModel.getIncompleteNoc(facilityId);
     if (existing) {
+      const existingNo = existing.NOCNUMBER || existing.nocNumber || '';
       return res.status(409).json({
-        error: 'An incomplete Monthly Indent already exists. Please delete it before creating a new one.',
-        nocId: existing.NOCID,
-        nocNumber: existing.NOCNUMBER
+        error: `An incomplete Monthly Indent (${existingNo}) already exists. Please delete or complete it before creating a new one.`,
+        nocId: existing.NOCID || existing.nocId,
+        nocNumber: existingNo
       });
     }
 

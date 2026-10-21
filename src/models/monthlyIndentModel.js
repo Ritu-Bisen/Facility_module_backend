@@ -65,6 +65,7 @@ async function getIncompleteNoc(facilityId) {
     WHERE STATUS = 'I'
       AND FACILITYID = :facilityId
       AND INDENTTYPE IS NULL
+    ORDER BY NOCID DESC
   `;
   const result = await db.execute(query, { facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
   return result.rows.length > 0 ? result.rows[0] : null;

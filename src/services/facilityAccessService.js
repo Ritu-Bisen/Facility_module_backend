@@ -48,6 +48,7 @@ async function getPermissionsByFacility(facilityType) {
 
 async function saveFacilityPermissions(facilityType, modules) {
   const permissionsToSave = [];
+  const seenScreenIds = new Set();
   
   (modules || []).forEach(module => {
     (module.screens || []).forEach(screen => {
@@ -58,9 +59,11 @@ async function saveFacilityPermissions(facilityType, modules) {
       if (screen.canDelete) ops += 'D';
       if (screen.canApprove) ops += 'P';
       
-      if (ops.length > 0) {
+      const sId = Number(screen.screenId);
+      if (ops.length > 0 && sId && !seenScreenIds.has(sId)) {
+        seenScreenIds.add(sId);
         permissionsToSave.push({
-          screenId: screen.screenId,
+          screenId: sId,
           operations: ops
         });
       }

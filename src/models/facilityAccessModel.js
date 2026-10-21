@@ -2,11 +2,12 @@ const db = require('../config/db');
 
 // Setup the table if it doesn't exist (Utility function, usually run manually)
 async function initFacilityTable() {
-  const connection = await db.oracledb.getConnection(db.poolAlias || 'default');
+  let connection;
   try {
+    connection = await db.getConnection();
     const checkSql = `SELECT count(*) as cnt FROM user_tables WHERE table_name = 'USRFACILITYSCREENS'`;
     const result = await connection.execute(checkSql);
-    if (result.rows[0].CNT === 0) {
+    if (result.rows && result.rows[0] && (result.rows[0].CNT === 0 || result.rows[0].cnt === 0)) {
       await connection.execute(`
         CREATE TABLE USRFACILITYSCREENS (
             FacilityType VARCHAR2(50),
@@ -22,7 +23,9 @@ async function initFacilityTable() {
     console.error('Error checking/creating USRFACILITYSCREENS table:', err);
   } finally {
     if (connection) {
-      await connection.close();
+      try {
+        await connection.close();
+      } catch (e) {}
     }
   }
 }
@@ -98,11 +101,19 @@ async function getAllFacilityTypes() {
 // Save permissions for a facility type
 async function saveFacilityPermissions(facilityType, permissions) {
   // permissions: [{ screenId, operations: 'VEA' }]
-  const oracledb = require('oracledb');
-  const connection = await oracledb.getConnection();
+  let connection;
   try {
-    await connection.execute(`DELETE FROM USRFACILITYSCREENS WHERE FacilityType = :facilityType`, [facilityType]);
+    connection = await db.getConnection();
+    const cleanType = String(facilityType || '').trim();
 
+    // 1. Delete all previous permissions for this facility type
+    await connection.execute(
+      `DELETE FROM USRFACILITYSCREENS WHERE UPPER(TRIM(FacilityType)) = UPPER(TRIM(:cleanType))`,
+      [cleanType]
+    );
+    await connection.commit();
+
+    // 2. Insert the currently selected permissions
     if (permissions && permissions.length > 0) {
       const sql = `
         INSERT INTO USRFACILITYSCREENS (FacilityType, ScreenID, Operations, EntryDate) 
@@ -110,25 +121,31 @@ async function saveFacilityPermissions(facilityType, permissions) {
       `;
       
       const binds = permissions.map(p => ({
-        facilityType: facilityType,
-        screenId: p.screenId,
-        operations: p.operations
+        facilityType: cleanType,
+        screenId: Number(p.screenId),
+        operations: String(p.operations)
       }));
       
       await connection.executeMany(sql, binds, { autoCommit: false });
+      await connection.commit();
     }
     
-    await connection.commit();
     return true;
   } catch (err) {
-    await connection.rollback();
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (rbErr) {
+        console.error('Rollback error:', rbErr);
+      }
+    }
     throw err;
   } finally {
     if (connection) {
       try {
         await connection.close();
       } catch (err) {
-        console.error(err);
+        console.error('Connection close error:', err);
       }
     }
   }

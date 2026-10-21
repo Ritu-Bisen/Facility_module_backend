@@ -54,8 +54,23 @@ async function execute(sql, binds = [], opts = {}) {
   }
 }
 
+async function getConnection() {
+  const walletPath = getWalletPath();
+  process.env.TNS_ADMIN = walletPath;
+
+  return await oracledb.getConnection({
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    connectString: process.env.DB_CONNECT_STRING,
+    walletLocation: walletPath,
+    walletPassword: process.env.WALLET_PASSWORD
+  });
+}
+
 module.exports = {
   initialize,
   close,
-  execute
+  execute,
+  getConnection,
+  oracledb
 };

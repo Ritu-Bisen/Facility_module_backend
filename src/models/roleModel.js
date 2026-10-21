@@ -29,34 +29,36 @@ async function getRolePermissions(roleId) {
 
 async function saveRolePermissions(roleId, permissions) {
   // permissions is an array of { screenId, operations: 'VEA' }
-  const connection = await db.oracledb.getConnection(db.poolAlias || 'default');
+  let connection;
   try {
+    connection = await db.getConnection();
     // Delete existing permissions for this role
-    await connection.execute(`DELETE FROM usrScreenOpsByRole WHERE RoleID = :roleId`, [roleId]);
+    await connection.execute(`DELETE FROM usrScreenOpsByRole WHERE RoleID = :roleId`, [Number(roleId)]);
+    await connection.commit();
 
     if (permissions && permissions.length > 0) {
-      // Get the next ID from sequence if exists, or max + 1. Since we don't know the exact sequence name, 
-      // let's do a max + rownum logic or assume there's a sequence/trigger.
-      // Usually CGMSC Oracle DBs have triggers for primary keys on insert, let's assume it does.
-      
       const sql = `
         INSERT INTO usrScreenOpsByRole (RoleID, ScreenID, Operations, EntryDate) 
         VALUES (:roleId, :screenId, :operations, SYSDATE)
       `;
       
       const binds = permissions.map(p => ({
-        roleId: roleId,
-        screenId: p.screenId,
-        operations: p.operations
+        roleId: Number(roleId),
+        screenId: Number(p.screenId),
+        operations: String(p.operations)
       }));
       
       await connection.executeMany(sql, binds, { autoCommit: false });
+      await connection.commit();
     }
     
-    await connection.commit();
     return true;
   } catch (err) {
-    await connection.rollback();
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch (rbErr) {}
+    }
     throw err;
   } finally {
     if (connection) {

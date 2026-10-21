@@ -112,6 +112,30 @@ async function getDownloadAiFormatData(req, res) {
   }
 }
 
+async function getDownloadNonEdlFormatData(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const categoryId = req.query.categoryId || 0;
+    const data = await annualIndentModel.getDownloadNonEdlFormatData(facilityId, categoryId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getDownloadNonEdlFormatData:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getDownloadReagentNonEdlFormatData(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const facilityTypeId = req.query.facilityTypeId || req.user?.facilityTypeId || req.user?.facilityTypeID;
+    const data = await annualIndentModel.getDownloadReagentNonEdlFormatData(facilityId, facilityTypeId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getDownloadReagentNonEdlFormatData:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 async function getIndentCategories(req, res) {
   try {
     const data = await annualIndentModel.getIndentCategories();
@@ -140,6 +164,18 @@ async function getUploadForwardList(req, res) {
     res.json({ success: true, data: result.list, canAdd: result.canAdd });
   } catch (error) {
     console.error('Error in getUploadForwardList:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getNonEdlUploadForwardList(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, status } = req.query;
+    const result = await annualIndentModel.getNonEdlUploadForwardList(facilityId, finYearId, status);
+    res.json({ success: true, data: result.list, canAdd: result.canAdd, count: result.count });
+  } catch (error) {
+    console.error('Error in getNonEdlUploadForwardList:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 }
@@ -280,7 +316,211 @@ async function uploadExcelIndentItems(req, res) {
   }
 }
 
+async function getReagentUploadForwardList(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, status } = req.query;
+    const result = await annualIndentModel.getReagentUploadForwardList(facilityId, finYearId, status);
+    res.json({ success: true, data: result.list, canAdd: result.canAdd });
+  } catch (error) {
+    console.error('Error in getReagentUploadForwardList:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getReagentCreateIndentHeader(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId } = req.query;
+    const data = await annualIndentModel.getReagentCreateIndentHeader(facilityId, finYearId, indentId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getReagentCreateIndentHeader:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function generateReagentIndentHeader(req, res) {
+  try {
+    const facilityId = req.body.facilityId || req.user?.facilityId || 22595;
+    const { finYearId } = req.body;
+    const data = await annualIndentModel.generateReagentIndentHeader(facilityId, finYearId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in generateReagentIndentHeader:', error);
+    res.status(500).json({ success: false, error: error.message || 'Internal Server Error' });
+  }
+}
+
+async function getReagentCreateIndentItems(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId } = req.query;
+    const data = await annualIndentModel.getReagentCreateIndentItems(facilityId, finYearId, indentId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getReagentCreateIndentItems:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function uploadExcelReagentIndentItems(req, res) {
+  try {
+    const facilityId = req.body.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId, items } = req.body;
+    const data = await annualIndentModel.uploadExcelReagentIndentItems(facilityId, finYearId, indentId, items);
+    res.json({ success: true, message: 'Reagent items uploaded successfully', data });
+  } catch (error) {
+    console.error('Error in uploadExcelReagentIndentItems:', error);
+    res.status(500).json({ success: false, error: error.message || 'Internal Server Error' });
+  }
+}
+
+async function freezeReagentIndent(req, res) {
+  try {
+    const facilityId = req.body.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId } = req.body;
+    await annualIndentModel.freezeReagentIndent(facilityId, finYearId, indentId);
+    res.json({ success: true, message: 'Reagent indent finalized successfully' });
+  } catch (error) {
+    console.error('Error in freezeReagentIndent:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function deleteReagentIndent(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.body?.facilityId || req.user?.facilityId || 22595;
+    const finYearId = req.query.finYearId || req.body?.finYearId;
+    const indentId = req.query.indentId || req.body?.indentId;
+    await annualIndentModel.deleteReagentIndent(facilityId, finYearId, indentId);
+    res.json({ success: true, message: 'Reagent indent deleted successfully' });
+  } catch (error) {
+    console.error('Error in deleteReagentIndent:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getNonEdlCreateIndentHeader(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId } = req.query;
+    const data = await annualIndentModel.getNonEdlCreateIndentHeader(facilityId, finYearId, indentId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getNonEdlCreateIndentHeader:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function generateNonEdlIndentHeader(req, res) {
+  try {
+    const facilityId = req.body.facilityId || req.user?.facilityId || 22595;
+    const { finYearId } = req.body;
+    const data = await annualIndentModel.generateNonEdlIndentHeader(facilityId, finYearId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in generateNonEdlIndentHeader:', error);
+    res.status(500).json({ success: false, error: error.message || 'Internal Server Error' });
+  }
+}
+
+async function getNonEdlCreateIndentItems(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId } = req.query;
+    const data = await annualIndentModel.getNonEdlCreateIndentItems(facilityId, finYearId, indentId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getNonEdlCreateIndentItems:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function uploadExcelNonEdlIndentItems(req, res) {
+  try {
+    const facilityId = req.body.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId, items } = req.body;
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, error: 'No items provided for upload' });
+    }
+    const result = await annualIndentModel.uploadExcelNonEdlIndentItems(facilityId, finYearId, indentId, items);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error in uploadExcelNonEdlIndentItems:', error);
+    res.status(500).json({ success: false, error: error.message || 'Internal Server Error' });
+  }
+}
+
+async function freezeNonEdlIndent(req, res) {
+  try {
+    const facilityId = req.body.facilityId || req.user?.facilityId || 22595;
+    const { finYearId, indentId } = req.body;
+    await annualIndentModel.freezeNonEdlIndent(facilityId, finYearId, indentId);
+    res.json({ success: true, message: 'Non-EDL indent finalized successfully' });
+  } catch (error) {
+    console.error('Error in freezeNonEdlIndent:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function deleteNonEdlIndent(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.body?.facilityId || req.user?.facilityId || 22595;
+    const finYearId = req.query.finYearId || req.body?.finYearId;
+    const indentId = req.query.indentId || req.body?.indentId;
+    await annualIndentModel.deleteNonEdlIndent(facilityId, finYearId, indentId);
+    res.json({ success: true, message: 'Non-EDL indent deleted successfully' });
+  } catch (error) {
+    console.error('Error in deleteNonEdlIndent:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getNonEdlCreateFinYears(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || '22595';
+    const mode = req.query.mode || '';
+    const indentId = req.query.indentId || 0;
+    const data = await annualIndentModel.getNonEdlCreateFinYears(facilityId, mode, indentId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getNonEdlCreateFinYears:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getReagentCreateFinYears(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || '22595';
+    const mode = req.query.mode || '';
+    const indentId = req.query.indentId || 0;
+    const data = await annualIndentModel.getReagentCreateFinYears(facilityId, mode, indentId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getReagentCreateFinYears:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getIndentPdfItems(req, res) {
+  try {
+    const { indentId } = req.query;
+    if (!indentId) {
+      return res.status(400).json({ success: false, error: 'indentId is required' });
+    }
+    const data = await annualIndentModel.getIndentPdfItems(indentId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getIndentPdfItems:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 module.exports = {
+  getIndentPdfItems,
+  getNonEdlCreateFinYears,
+  getReagentCreateFinYears,
   getItems,
   getSummary,
   getDistributions,
@@ -289,9 +529,25 @@ module.exports = {
   getMcHospitalAiVsIssuance,
   getAyushDownloadFormatData,
   getDownloadAiFormatData,
+  getDownloadNonEdlFormatData,
+  getDownloadReagentNonEdlFormatData,
   getIndentCategories,
   getUploadForwardFinYears,
   getUploadForwardList,
+  getNonEdlUploadForwardList,
+  getNonEdlCreateIndentHeader,
+  generateNonEdlIndentHeader,
+  getNonEdlCreateIndentItems,
+  uploadExcelNonEdlIndentItems,
+  freezeNonEdlIndent,
+  deleteNonEdlIndent,
+  getReagentUploadForwardList,
+  getReagentCreateIndentHeader,
+  generateReagentIndentHeader,
+  getReagentCreateIndentItems,
+  uploadExcelReagentIndentItems,
+  freezeReagentIndent,
+  deleteReagentIndent,
   getCreateIndentHeader,
   getCreateIndentItems,
   updateCreateIndentItem,
