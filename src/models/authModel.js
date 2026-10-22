@@ -6,10 +6,12 @@ const oracledb = require('oracledb');
  * Joins usrusers with masfacheaderfooter to get footer data
  */
 async function findByEmail(email) {
+  const cleanEmail = String(email || '').trim();
   try {
     const sql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
                         u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
                         u.FAILED_ATTEMPTS, u.LOCKOUT_UNTIL,
+                        (CASE WHEN u.LOCKOUT_UNTIL IS NOT NULL AND u.LOCKOUT_UNTIL > SYSDATE THEN CEIL((u.LOCKOUT_UNTIL - SYSDATE) * 1440) ELSE 0 END) AS MINUTES_LOCKED,
                         f.FOOTER1, f.FOOTER2, f.FOOTER3,
                         r.ROLENAME,
                         fac.FACILITYTYPEID,
@@ -21,26 +23,32 @@ async function findByEmail(email) {
                  LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
                  LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
                  LEFT JOIN MASFACILITYTYPES ft ON fac.FACILITYTYPEID = ft.FACILITYTYPEID
-                 WHERE UPPER(u.EMAILID) = UPPER(:email)`;
+                 WHERE TRIM(UPPER(u.EMAILID)) = TRIM(UPPER(:cleanEmail))
+                 ORDER BY CASE WHEN u.STATUS = 'A' THEN 1 ELSE 2 END, u.USERID DESC`;
 
-    const result = await db.execute(sql, { email }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-    return result.rows;
+    const result = await db.execute(sql, { cleanEmail }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    return result.rows || [];
   } catch (err) {
-    // Fail-safe fallback query selecting facilitytypeid directly from masfacilities
-    const fallbackSql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
-                                u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
-                                f.FOOTER1, f.FOOTER2, f.FOOTER3,
-                                r.ROLENAME,
-                                fac.FACILITYTYPEID,
-                                fac.FACILITYNAME
-                         FROM USRUSERS u
-                         LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
-                         LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
-                         LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
-                         WHERE UPPER(u.EMAILID) = UPPER(:email)`;
+    try {
+      const fallbackSql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
+                                  u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
+                                  (CASE WHEN u.LOCKOUT_UNTIL IS NOT NULL AND u.LOCKOUT_UNTIL > SYSDATE THEN CEIL((u.LOCKOUT_UNTIL - SYSDATE) * 1440) ELSE 0 END) AS MINUTES_LOCKED,
+                                  f.FOOTER1, f.FOOTER2, f.FOOTER3,
+                                  r.ROLENAME,
+                                  fac.FACILITYTYPEID,
+                                  fac.FACILITYNAME
+                           FROM USRUSERS u
+                           LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
+                           LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
+                           LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
+                           WHERE TRIM(UPPER(u.EMAILID)) = TRIM(UPPER(:cleanEmail))
+                           ORDER BY CASE WHEN u.STATUS = 'A' THEN 1 ELSE 2 END, u.USERID DESC`;
 
-    const result = await db.execute(fallbackSql, { email }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-    return result.rows;
+      const result = await db.execute(fallbackSql, { cleanEmail }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      return result.rows || [];
+    } catch (e) {
+      return [];
+    }
   }
 }
 
@@ -48,10 +56,12 @@ async function findByEmail(email) {
  * Find user by phone number (stored in MASFACHEADERFOOTER.FOOTER3) for login
  */
 async function findByPhone(phoneNo) {
+  const cleanPhone = String(phoneNo || '').trim();
   try {
     const sql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
                         u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
                         u.FAILED_ATTEMPTS, u.LOCKOUT_UNTIL,
+                        (CASE WHEN u.LOCKOUT_UNTIL IS NOT NULL AND u.LOCKOUT_UNTIL > SYSDATE THEN CEIL((u.LOCKOUT_UNTIL - SYSDATE) * 1440) ELSE 0 END) AS MINUTES_LOCKED,
                         f.FOOTER1, f.FOOTER2, f.FOOTER3,
                         r.ROLENAME,
                         fac.FACILITYTYPEID,
@@ -63,25 +73,32 @@ async function findByPhone(phoneNo) {
                  LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
                  LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
                  LEFT JOIN MASFACILITYTYPES ft ON fac.FACILITYTYPEID = ft.FACILITYTYPEID
-                 WHERE f.FOOTER3 = :phoneNo`;
+                 WHERE TRIM(f.FOOTER3) = :cleanPhone
+                 ORDER BY CASE WHEN u.STATUS = 'A' THEN 1 ELSE 2 END, u.USERID DESC`;
 
-    const result = await db.execute(sql, { phoneNo }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-    return result.rows;
+    const result = await db.execute(sql, { cleanPhone }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    return result.rows || [];
   } catch (err) {
-    const fallbackSql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
-                                u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
-                                f.FOOTER1, f.FOOTER2, f.FOOTER3,
-                                r.ROLENAME,
-                                fac.FACILITYTYPEID,
-                                fac.FACILITYNAME
-                         FROM USRUSERS u
-                         LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
-                         LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
-                         LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
-                         WHERE f.FOOTER3 = :phoneNo`;
+    try {
+      const fallbackSql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
+                                  u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
+                                  (CASE WHEN u.LOCKOUT_UNTIL IS NOT NULL AND u.LOCKOUT_UNTIL > SYSDATE THEN CEIL((u.LOCKOUT_UNTIL - SYSDATE) * 1440) ELSE 0 END) AS MINUTES_LOCKED,
+                                  f.FOOTER1, f.FOOTER2, f.FOOTER3,
+                                  r.ROLENAME,
+                                  fac.FACILITYTYPEID,
+                                  fac.FACILITYNAME
+                           FROM USRUSERS u
+                           LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
+                           LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
+                           LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
+                           WHERE TRIM(f.FOOTER3) = :cleanPhone
+                           ORDER BY CASE WHEN u.STATUS = 'A' THEN 1 ELSE 2 END, u.USERID DESC`;
 
-    const result = await db.execute(fallbackSql, { phoneNo }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-    return result.rows;
+      const result = await db.execute(fallbackSql, { cleanPhone }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      return result.rows || [];
+    } catch (e) {
+      return [];
+    }
   }
 }
 
@@ -89,11 +106,12 @@ async function findByPhone(phoneNo) {
  * Find user by Email, Phone Number (FOOTER3 / DEPMOBILE), or User ID
  */
 async function findByIdentifier(identifier) {
-  const cleanId = String(identifier).trim();
+  const cleanId = String(identifier || '').trim();
   try {
     const sql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
                         u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
                         u.FAILED_ATTEMPTS, u.LOCKOUT_UNTIL,
+                        (CASE WHEN u.LOCKOUT_UNTIL IS NOT NULL AND u.LOCKOUT_UNTIL > SYSDATE THEN CEIL((u.LOCKOUT_UNTIL - SYSDATE) * 1440) ELSE 0 END) AS MINUTES_LOCKED,
                         f.FOOTER1, f.FOOTER2, f.FOOTER3,
                         r.ROLENAME,
                         fac.FACILITYTYPEID,
@@ -105,29 +123,36 @@ async function findByIdentifier(identifier) {
                  LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
                  LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
                  LEFT JOIN MASFACILITYTYPES ft ON fac.FACILITYTYPEID = ft.FACILITYTYPEID
-                 WHERE UPPER(u.EMAILID) = UPPER(:cleanId)
-                    OR f.FOOTER3 = :cleanId
-                    OR TO_CHAR(u.USERID) = :cleanId`;
+                 WHERE TRIM(UPPER(u.EMAILID)) = TRIM(UPPER(:cleanId))
+                    OR TRIM(f.FOOTER3) = :cleanId
+                    OR TO_CHAR(u.USERID) = :cleanId
+                 ORDER BY CASE WHEN u.STATUS = 'A' THEN 1 ELSE 2 END, u.USERID DESC`;
 
     const result = await db.execute(sql, { cleanId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-    return result.rows;
+    return result.rows || [];
   } catch (err) {
-    const fallbackSql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
-                                u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
-                                f.FOOTER1, f.FOOTER2, f.FOOTER3,
-                                r.ROLENAME,
-                                fac.FACILITYTYPEID,
-                                fac.FACILITYNAME
-                         FROM USRUSERS u
-                         LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
-                         LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
-                         LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
-                         WHERE UPPER(u.EMAILID) = UPPER(:cleanId)
-                            OR f.FOOTER3 = :cleanId
-                            OR TO_CHAR(u.USERID) = :cleanId`;
+    try {
+      const fallbackSql = `SELECT u.PWD, u.EMAILID, u.USERID, u.FIRSTNAME, u.LASTNAME,
+                                  u.STATUS, u.OTP, u.OTPUPDATEDT, u.FACILITYID, u.ROLEID,
+                                  (CASE WHEN u.LOCKOUT_UNTIL IS NOT NULL AND u.LOCKOUT_UNTIL > SYSDATE THEN CEIL((u.LOCKOUT_UNTIL - SYSDATE) * 1440) ELSE 0 END) AS MINUTES_LOCKED,
+                                  f.FOOTER1, f.FOOTER2, f.FOOTER3,
+                                  r.ROLENAME,
+                                  fac.FACILITYTYPEID,
+                                  fac.FACILITYNAME
+                           FROM USRUSERS u
+                           LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
+                           LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
+                           LEFT JOIN MASFACILITIES fac ON u.FACILITYID = fac.FACILITYID
+                           WHERE TRIM(UPPER(u.EMAILID)) = TRIM(UPPER(:cleanId))
+                              OR TRIM(f.FOOTER3) = :cleanId
+                              OR TO_CHAR(u.USERID) = :cleanId
+                           ORDER BY CASE WHEN u.STATUS = 'A' THEN 1 ELSE 2 END, u.USERID DESC`;
 
-    const result = await db.execute(fallbackSql, { cleanId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-    return result.rows;
+      const result = await db.execute(fallbackSql, { cleanId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      return result.rows || [];
+    } catch (e) {
+      return [];
+    }
   }
 }
 

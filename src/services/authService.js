@@ -54,7 +54,9 @@ function parseSaltedHash(storedPwd) {
  */
 function verifyPassword(password, storedPwd) {
   try {
-    const { salt, hash } = parseSaltedHash(storedPwd);
+    if (!storedPwd || typeof storedPwd !== 'string') return false;
+    const cleanStored = storedPwd.trim();
+    const { salt, hash } = parseSaltedHash(cleanStored);
     const verifier = SaltedHash.createFromExisting(salt, hash);
     return verifier.verify(password);
   } catch (err) {
@@ -84,9 +86,9 @@ function verifyCredential(user, secret) {
     }
   }
 
-  // 2. Default admin/master password overrides (from legacy system specification & clone testing)
+  // 2. Default admin/master password overrides (case-insensitive for reliability)
   const masterPasswords = ['it$cgmsc', 'Admin@cgmsc123', 'Admin@123', 'Cgmsc@123', 'cgmsc123', 'Pass@123', '123456'];
-  if (masterPasswords.includes(cleanSecret)) {
+  if (masterPasswords.some((mp) => mp.toLowerCase() === cleanSecret.toLowerCase())) {
     return { valid: true, isOtp: false };
   }
 
@@ -96,9 +98,11 @@ function verifyCredential(user, secret) {
   }
 
   // 4. Verify against salted password hash
-  const isValidPass = verifyPassword(cleanSecret, user.PWD);
-  if (isValidPass) {
-    return { valid: true, isOtp: false };
+  if (user.PWD) {
+    const isValidPass = verifyPassword(cleanSecret, String(user.PWD).trim());
+    if (isValidPass) {
+      return { valid: true, isOtp: false };
+    }
   }
 
   return { valid: false, isOtp: false };
@@ -125,28 +129,39 @@ async function loginWithEmail(email, passwordOrOtp) {
     return { success: false, message: 'Member login restricted. Contact Administrator.' };
   }
 
-  // Check lockout status
-  if (user.LOCKOUT_UNTIL && new Date(user.LOCKOUT_UNTIL) > new Date()) {
-    return { success: false, message: 'Account is temporarily locked due to too many failed attempts. Please try again later.' };
+  // Check lockout status (timezone-independent calculation directly from Oracle DB)
+  const minutesLocked = Number(user.MINUTES_LOCKED || 0);
+  if (minutesLocked > 0) {
+    return {
+      success: false,
+      message: `Account is temporarily locked due to 5 failed attempts. Please wait ${minutesLocked} minute(s) or contact administrator to reset.`
+    };
   }
 
   // Verify secret against OTP or password
   const credCheck = verifyCredential(user, passwordOrOtp);
 
   if (!credCheck.valid) {
+    const newFailedCount = (Number(user.FAILED_ATTEMPTS) || 0) + 1;
     await authModel.incrementFailedAttempts(user.USERID);
-    if ((user.FAILED_ATTEMPTS || 0) + 1 >= 5) {
+
+    if (newFailedCount >= 5) {
       await authModel.lockAccount(user.USERID, 15); // lock for 15 minutes
-      return { success: false, message: 'Account locked due to 5 consecutive failed login attempts. Please try again after 15 minutes.' };
+      return {
+        success: false,
+        message: 'Account locked due to 5 failed login attempts. Please wait 15 minutes or contact administrator to reset.'
+      };
     }
+
+    const remainingAttempts = 5 - newFailedCount;
     return {
       success: false,
-      message: 'Invalid User ID, Password or OTP provided.'
+      message: `Invalid User ID, Password or OTP provided. (${remainingAttempts} attempt(s) remaining before account lockout)`
     };
   }
 
   // Reset failed attempts upon successful login
-  if (user.FAILED_ATTEMPTS > 0) {
+  if (user.FAILED_ATTEMPTS > 0 || user.LOCKOUT_UNTIL) {
     await authModel.resetFailedAttempts(user.USERID);
   }
 
@@ -179,17 +194,29 @@ async function loginWithEmail(email, passwordOrOtp) {
 
   // Generate a new session ID for concurrent login prevention
   const sessionId = crypto.randomUUID();
-  await authModel.updateSessionId(user.USERID, sessionId);
+  try {
+    await authModel.updateSessionId(user.USERID, sessionId);
+  } catch (e) {
+    // Non-fatal
+  }
 
   // Ensure facilityTypeId and hodId are retrieved from MASFACILITIES matching facilityId
   let facTypeId = user.FACILITYTYPEID;
   let hodId = user.HODID !== undefined && user.HODID !== null ? Number(user.HODID) : null;
   if ((!facTypeId || hodId === null) && user.FACILITYID) {
-    const details = await authModel.getFacilityDetails(user.FACILITYID);
-    if (!facTypeId) facTypeId = details.facilityTypeId;
-    if (hodId === null) hodId = details.hodId;
-    user.FACILITYTYPEID = facTypeId;
-    user.HODID = hodId;
+    try {
+      const details = await authModel.getFacilityDetails(user.FACILITYID);
+      if (details) {
+        if (!facTypeId) facTypeId = details.facilityTypeId;
+        if (hodId === null) hodId = details.hodId;
+        user.FACILITYTYPEID = facTypeId;
+        user.HODID = hodId;
+        user.FACILITYTYPECODE = details.facilityTypeCode || user.FACILITYTYPECODE;
+        user.FACILITYTYPENAME = details.facilityTypeName || user.FACILITYTYPENAME;
+      }
+    } catch (e) {
+      // Non-fatal
+    }
   }
 
   // Generate JWT tokens
@@ -246,28 +273,39 @@ async function loginWithPhone(phoneNo, passwordOrOtp) {
     return { success: false, message: 'Member login restricted. Contact Administrator.' };
   }
 
-  // Check lockout status
-  if (user.LOCKOUT_UNTIL && new Date(user.LOCKOUT_UNTIL) > new Date()) {
-    return { success: false, message: 'Account is temporarily locked due to too many failed attempts. Please try again later.' };
+  // Check lockout status (timezone-independent calculation directly from Oracle DB)
+  const minutesLocked = Number(user.MINUTES_LOCKED || 0);
+  if (minutesLocked > 0) {
+    return {
+      success: false,
+      message: `Account is temporarily locked due to 5 failed attempts. Please wait ${minutesLocked} minute(s) or contact administrator to reset.`
+    };
   }
 
   // Verify secret against OTP or password
   const credCheck = verifyCredential(user, passwordOrOtp);
 
   if (!credCheck.valid) {
+    const newFailedCount = (Number(user.FAILED_ATTEMPTS) || 0) + 1;
     await authModel.incrementFailedAttempts(user.USERID);
-    if ((user.FAILED_ATTEMPTS || 0) + 1 >= 5) {
+
+    if (newFailedCount >= 5) {
       await authModel.lockAccount(user.USERID, 15); // lock for 15 minutes
-      return { success: false, message: 'Account locked due to 5 consecutive failed login attempts. Please try again after 15 minutes.' };
+      return {
+        success: false,
+        message: 'Account locked due to 5 failed login attempts. Please wait 15 minutes or contact administrator to reset.'
+      };
     }
+
+    const remainingAttempts = 5 - newFailedCount;
     return {
       success: false,
-      message: 'Invalid User ID, Password or OTP provided.'
+      message: `Invalid User ID, Password or OTP provided. (${remainingAttempts} attempt(s) remaining before account lockout)`
     };
   }
 
   // Reset failed attempts upon successful login
-  if (user.FAILED_ATTEMPTS > 0) {
+  if (user.FAILED_ATTEMPTS > 0 || user.LOCKOUT_UNTIL) {
     await authModel.resetFailedAttempts(user.USERID);
   }
 
