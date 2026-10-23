@@ -14,6 +14,15 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 
+// Trust reverse proxy (IIS / ARR)
+// In production behind IIS ARR, trusting 1 proxy hop ensures req.ip correctly resolves
+// to the client's actual IP from the X-Forwarded-For header, preventing all clients
+// from sharing the reverse proxy's loopback IP (127.0.0.1) in rate limiters and audit logs.
+const trustProxyConfig = process.env.TRUST_PROXY !== undefined
+  ? (isNaN(process.env.TRUST_PROXY) ? process.env.TRUST_PROXY : Number(process.env.TRUST_PROXY))
+  : 1;
+app.set('trust proxy', trustProxyConfig);
+
 app.disable('x-powered-by');
 
 // Strip technology version disclosure headers & restrict HTTP methods (CWE-200 / Vulnerability Point No. 21)

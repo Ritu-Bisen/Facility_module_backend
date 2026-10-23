@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const { authenticate } = require('../middleware/authMiddleware');
-const { loginRateLimiter, otpRateLimiter } = require('../middleware/rateLimitMiddleware');
+const { loginRateLimiter, otpRateLimiter, mfaRateLimiter } = require('../middleware/rateLimitMiddleware');
 const { noCache } = require('../middleware/cacheMiddleware');
 const captchaRoutes = require('./captchaRoutes');
 
@@ -22,7 +22,7 @@ router.post('/login/email', loginRateLimiter, authController.loginWithEmail);
 router.post('/login/phone', loginRateLimiter, authController.loginWithPhone);
 
 // POST /api/auth/login/mfa - Step 2: Verify MFA OTP and Login (CWE-308)
-router.post('/login/mfa', loginRateLimiter, authController.verifyMfa);
+router.post('/login/mfa', mfaRateLimiter, authController.verifyMfa);
 
 // POST /api/auth/refresh - Refresh access token
 router.post('/refresh', authController.refreshToken);

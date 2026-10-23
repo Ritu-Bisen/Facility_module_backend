@@ -11,7 +11,7 @@ const { validateIdentifier } = require('../utils/sanitizer');
  */
 async function loginWithEmail(req, res, next) {
   try {
-    const { email, password, captchaValue, captchaToken } = req.body;
+    const { email, password, captchaValue, captchaToken } = req.body || {};
 
     if (!captchaValue || !captchaToken) {
       return res.status(400).json({ success: false, message: 'CAPTCHA is required' });
@@ -69,7 +69,7 @@ async function loginWithEmail(req, res, next) {
  */
 async function loginWithPhone(req, res, next) {
   try {
-    const { phoneNo, password, captchaValue, captchaToken } = req.body;
+    const { phoneNo, password, captchaValue, captchaToken } = req.body || {};
 
     if (!captchaValue || !captchaToken) {
       return res.status(400).json({ success: false, message: 'CAPTCHA is required' });
@@ -127,7 +127,7 @@ async function loginWithPhone(req, res, next) {
  */
 async function sendOTP(req, res, next) {
   try {
-    const { type, identifier } = req.body;
+    const { type, identifier } = req.body || {};
     
     if (!identifier || typeof identifier !== 'string' || !identifier.trim()) {
       return res.status(400).json({ success: false, message: 'User ID or Phone Number is required' });
@@ -161,7 +161,7 @@ async function sendOTP(req, res, next) {
  */
 async function verifyMfa(req, res, next) {
   try {
-    const { tempToken, otp } = req.body;
+    const { tempToken, otp } = req.body || {};
     
     if (!tempToken || !otp) {
       return res.status(400).json({ success: false, message: 'tempToken and otp are required' });
@@ -201,7 +201,7 @@ async function verifyMfa(req, res, next) {
  */
 async function refreshToken(req, res, next) {
   try {
-    const { refreshToken: token } = req.body;
+    const { refreshToken: token } = req.body || {};
 
     if (!token) {
       return res.status(400).json({ success: false, message: 'Refresh token is required' });
@@ -249,7 +249,7 @@ const WEAK_PASSWORDS = ['password123', 'admin123', '12345678', 'qwerty12', 'pass
 async function changePassword(req, res, next) {
   try {
     const userId = req.user.userId;
-    const { oldPassword, newPassword } = req.body;
+    const { oldPassword, newPassword } = req.body || {};
 
     if (!oldPassword || !newPassword) {
       return res.status(400).json({ success: false, message: 'Old password and new password are required' });
