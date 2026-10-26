@@ -104,7 +104,8 @@ async function getDownloadAiFormatData(req, res) {
   try {
     const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
     const categoryId = req.query.categoryId || 0;
-    const data = await annualIndentModel.getDownloadAiFormatData(facilityId, categoryId);
+    const facilityTypeId = req.query.facilityTypeId || req.user?.facilityTypeId || req.user?.facilityTypeID;
+    const data = await annualIndentModel.getDownloadAiFormatData(facilityId, categoryId, facilityTypeId);
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error in getDownloadAiFormatData:', error);
@@ -517,7 +518,103 @@ async function getIndentPdfItems(req, res) {
   }
 }
 
+async function getDaoForwardedList(req, res) {
+  try {
+    const facilityId = req.user.facilityId;
+    const { finYearId } = req.query;
+    const data = await annualIndentModel.getDaoForwardedList(facilityId, finYearId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getDaoForwardedList:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getDaoDetailItems(req, res) {
+  try {
+    const facilityId = req.user.facilityId;
+    const { subCatId, finYearId } = req.query;
+    if (!subCatId) {
+      return res.status(400).json({ success: false, message: 'SubCatId is required' });
+    }
+    const data = await annualIndentModel.getDaoDetailItems(facilityId, subCatId, finYearId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getDaoDetailItems:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getDaoApprovalList(req, res) {
+  try {
+    const facilityId = req.user.facilityId;
+    const { finYearId, categoryId, status } = req.query;
+    const data = await annualIndentModel.getDaoApprovalList(facilityId, finYearId, categoryId, status);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getDaoApprovalList:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getDaoIndentItems(req, res) {
+  try {
+    const { indentId } = req.params;
+    const data = await annualIndentModel.getDaoIndentItems(indentId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getDaoIndentItems:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function approveDaoIndent(req, res) {
+  try {
+    const userId = req.user.userId;
+    const { indentId, items } = req.body;
+    if (!indentId) {
+      return res.status(400).json({ success: false, message: 'Indent ID is required' });
+    }
+    const result = await annualIndentModel.approveDaoIndent(indentId, userId, items);
+    res.json({ success: true, message: 'Indent approved successfully', data: result });
+  } catch (error) {
+    console.error('Error in approveDaoIndent:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getDaoStatusReport(req, res) {
+  try {
+    const facilityId = req.user.facilityId;
+    const { finYearId, categoryId } = req.query;
+    const data = await annualIndentModel.getDaoStatusReport(facilityId, finYearId, categoryId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getDaoStatusReport:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function getDaoItemWiseAi(req, res) {
+  try {
+    const facilityId = req.user.facilityId;
+    const { finYearId, categoryId } = req.query;
+    const data = await annualIndentModel.getDaoItemWiseAi(facilityId, finYearId, categoryId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in getDaoItemWiseAi:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 module.exports = {
+  getDaoForwardedList,
+  getDaoDetailItems,
+  getDaoApprovalList,
+  getDaoIndentItems,
+  approveDaoIndent,
+  getDaoStatusReport,
+  getDaoItemWiseAi,
   getIndentPdfItems,
   getNonEdlCreateFinYears,
   getReagentCreateFinYears,

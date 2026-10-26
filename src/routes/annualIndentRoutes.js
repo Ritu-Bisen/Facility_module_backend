@@ -48,4 +48,13 @@ router.delete('/create/indent', annualIndentController.deleteIndent);
 router.post('/distribute', annualIndentController.updateDistribution);
 router.delete('/distribute/:id', annualIndentController.deleteDistribution);
 
+// DAO Annual Indent Routes
+router.get('/dao/forwarded-list', annualIndentController.getDaoForwardedList);
+router.get('/dao/detail-items', annualIndentController.getDaoDetailItems);
+router.get('/dao/approval-list', annualIndentController.getDaoApprovalList);
+router.get('/dao/indent-items/:indentId', annualIndentController.getDaoIndentItems);
+router.post('/dao/approve', annualIndentController.approveDaoIndent);
+router.get('/dao/status-report', annualIndentController.getDaoStatusReport);
+router.get('/dao/item-wise-ai', annualIndentController.getDaoItemWiseAi);
+
 module.exports = router;

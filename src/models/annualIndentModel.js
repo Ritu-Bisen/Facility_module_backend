@@ -362,11 +362,127 @@ async function getAyushDownloadFormatData(facilityId, subCatId) {
   }
 }
 
-// 2. Annual Indent Excel Download Format Data (DHS / General Format Query)
-async function getDownloadAiFormatData(facilityId, categoryId) {
+// 2. Annual Indent Excel Download Format Data (DHS / General Format Query OR DME Query)
+async function getDownloadAiFormatData(facilityId, categoryId, facilityTypeId) {
   try {
     const usrFacilityID = Number(facilityId) || 22595;
     const inputCatId = Number(categoryId) || 0;
+
+    // Check if facility is DME (by facilityTypeId parameter, or DB check on masfacilities)
+    let isDme = false;
+    const cleanFacTypeId = facilityTypeId !== undefined && facilityTypeId !== null ? String(facilityTypeId).trim() : '';
+    if (cleanFacTypeId === '364' || cleanFacTypeId === '378') {
+      isDme = true;
+    } else {
+      const facCheckRes = await db.execute(
+        `SELECT f.facilitytypeid, t.facilitytypecode 
+         FROM masfacilities f 
+         LEFT JOIN masfacilitytypes t ON t.facilitytypeid = f.facilitytypeid 
+         WHERE f.facilityid = :usrFacilityID`,
+        { usrFacilityID },
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+      if (facCheckRes.rows && facCheckRes.rows[0]) {
+        const ftId = String(facCheckRes.rows[0].FACILITYTYPEID || facCheckRes.rows[0].facilitytypeid || '');
+        const ftCode = String(facCheckRes.rows[0].FACILITYTYPECODE || facCheckRes.rows[0].facilitytypecode || '').toUpperCase();
+        if (ftId === '364' || ftId === '378' || ftCode.includes('DME')) {
+          isDme = true;
+        }
+      }
+    }
+
+    if (isDme) {
+      // DME Facility Specific Query
+      const dmeQuery = `
+        select 0 SlNo,Formate.itemcode,Formate.itemname,Formate.Formulation,Formate.Strength,Formate.GroupName,
+          Formate.edl,nvl(Consumption.COSUMPTION_From_1APR_25,'0') COSUMPTION_From_1APR_26, nvl(cr.CurStock,0) as Current_Stock,INDENT_26_27  as INDENT_27_28
+    ,nvl(vr.singlerate,0) as Rate,Formate.unitcount as PACKAGINGUNIT,Formate.categoryname
+          from
+          (
+          select 0 SlNo ,m.itemcode,m.ItemID,case when length(m.itemname)>100 
+          then substr(m.itemname,0,100) else itemname end itemname,t.itemtypename Formulation,
+          case when length(m.strength1)>100 then substr(m.strength1,0,100) else m.strength1 
+          end Strength,g.groupname GroupName,e.edl, 
+                0 COSUMPTION_From_1APR_25,0 INDENT_26_27   ,m.unitcount ,mc.mcid,mt.categoryname  
+                from masitems m inner join masitemgroups g on m.groupid=g.groupid  
+                inner join masitemcategories mt on mt.categoryid=m.categoryid 
+                inner join masitemmaincategory mc on mc.mcid=mt.mcid
+                inner join masedl e on e.edlcat=m.edlcat 
+                inner join masitemtypes t on t.itemtypeid=m.itemtypeid where mt.categoryid 
+                in(52,53,54,55) and m.EDL2025='Y' and m.EDL2025FLAG in ('COMMON','CME') and m.isfreez_itpr is null
+                ) Formate
+                left outer join   v_itemrate vr on vr.itemid=Formate.itemid
+                left outer join
+                (
+                select itemcode,nvl((issuedqty_NOS),'0') as COSUMPTION_From_1APR_25
+          from(
+
+    select itemcode,(sum(iss_qty)*unitcount) issuedqty_NOS from (
+                  select tb.indentid,tbi.itemid,tbi.indentitemid,m.itemcode,  
+                  sum(tbo.issueqty + nvl(tbo.reconcile_qty,0)) iss_qty ,m.unitcount
+                   from tbindents tb
+                   inner join tbindentitems tbi on tbi.indentid=tb.indentid 
+                   inner join tboutwards tbo on tbo.indentitemid=tbi.indentitemid
+                   inner join tbreceiptbatches rb on rb.inwno=tbo.inwno
+                   inner join masitems m on m.itemid = tbi.itemid
+                   inner join masfacilities f on f.facilityid = tb.facilityid   
+                  where tb.status = 'C' and tb.issuetype='NO' and f.facilityid = :usrFacilityID
+                  and tb.indentdate between (select startdate from masaccyearsettings where accyrsetId =(select accyrsetId from masaccyearsettings where sysdate between startdate and enddate)) 
+                  and (select enddate from masaccyearsettings where accyrsetId =(select accyrsetId from masaccyearsettings where sysdate between startdate and enddate))         
+                  and tb.notindpdmis is null and tb.notindpdmis is null and tbi.notindpdmis is null   
+                  and tbo.notindpdmis is null and rb.notindpdmis is null  
+                  group by 
+                  tb.indentid,tbi.itemid,tbi.indentitemid,m.itemcode,m.unitcount             
+                  ) i 
+                  inner join tbindentitems tbi on tbi.itemid = i.itemid and tbi.indentitemid = i.indentitemid 
+                  group by itemcode,unitcount
+   
+                  )
+                ) Consumption on Formate.itemcode=Consumption.itemcode
+  left outer join 
+                (
+                select i.itemid, sum(nvl(rb.AbsRqty,0))- sum(nvl(x.issueQty,0)) CurStock
+  from tbFacilityReceiptBatches rb  
+  inner join tbfacilityreceiptitems i on rb.FACreceiptitemid=i.FACreceiptitemid  
+  inner join tbfacilityreceipts r on r.FACreceiptid=i.FACreceiptid 
+  left outer join (
+    select  FacilityID,sum(nvl(a.IssueQty,0)) issueQty, 0 AbsRQty,  
+  a.Inwno   
+  from  tbfacilityoutwards a
+  inner join tbfacilityissueitems tbi on tbi.issueitemid =a.issueitemid   
+  inner join tbfacilityissues tb on tb.issueid=tbi.issueid    
+  where tb.FacilityID = :usrFacilityID
+  --and tbi.itemid=mitemid 
+  group by a.Inwno ,FacilityID   
+  ) x on x.inwno=rb.inwno and x.FacilityID=r.FacilityID
+  where   (rb.ExpDate >= SysDate or nvl(rb.ExpDate,SysDate) >= SysDate) 
+  and r.status='C' and r.FacilityID = :usrFacilityID  
+  group by i.itemid
+  having  sum(nvl(rb.AbsRqty,0))- sum(nvl(x.issueQty,0))>0
+                
+                )cr on cr.itemid=Formate.ItemID
+        order by Formate.groupname, Formate.itemname
+      `;
+
+      const dmeResult = await db.execute(dmeQuery, { usrFacilityID }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      const dmeRows = dmeResult.rows || [];
+      return dmeRows.map((r, idx) => ({
+        slNo: idx + 1,
+        itemCode: r.ITEMCODE || r.itemcode || '-',
+        itemName: r.ITEMNAME || r.itemname || '-',
+        formulation: r.FORMULATION || r.formulation || '-',
+        strength: r.STRENGTH || r.strength || '-',
+        groupName: r.GROUPNAME || r.groupname || '-',
+        edl: r.EDL || r.edl || '-',
+        cosumptionFrom1Apr26: Number(r.COSUMPTION_FROM_1APR_26 !== undefined ? r.COSUMPTION_FROM_1APR_26 : 0),
+        currentStock: Number(r.CURRENT_STOCK !== undefined ? r.CURRENT_STOCK : 0),
+        indent2728: Number(r.INDENT_27_28 !== undefined ? r.INDENT_27_28 : 0),
+        rate: Number(r.RATE !== undefined ? r.RATE : 0),
+        packagingUnit: Number(r.PACKAGINGUNIT !== undefined ? r.PACKAGINGUNIT : 1),
+        categoryName: r.CATEGORYNAME || r.categoryname || 'DRUGS',
+        isDme: true
+      }));
+    }
 
     let realCatId = inputCatId;
     if (realCatId > 0) {
@@ -388,7 +504,7 @@ async function getDownloadAiFormatData(facilityId, categoryId) {
     }
 
     const query = `
-      SELECT
+      SELECT 
           0 AS SlNo,
           Formate.itemcode,
           SUBSTR(Formate.itemname, 1, 100) AS itemname,
@@ -396,160 +512,137 @@ async function getDownloadAiFormatData(facilityId, categoryId) {
           SUBSTR(Formate.Strength, 1, 100) AS Strength,
           Formate.GroupName,
           Formate.edl,
-          NVL(iss.FacIssueqty, 0) AS Issued_From_WH_01_Apr_25_to_31st_Oct_25,
-          0 AS Actual_Consumption_From_01_April_25_to_31st_Oct_25,
-          0 AS Estimated_Consumption_For_One_Year_From_01_April_25_to_31st_March_26,
+          NVL(iss.FacIssueqty, 0) AS Issued_From_WH_01_Apr_26_to_31st_Oct_27,
+          0 AS Actual_Consumption_From_01_April_26_to_31st_Oct_26,
+          0 AS Estimated_Consumption_For_One_Year_From_01_April_26_to_31st_March_27,
           NVL(cr.CurStock, 0) AS Current_Stock,
-          0 AS ANNUAL_INDENT_26_27,
+          0 AS ANNUAL_INDENT_27_28,
           NVL(vr.singlerate, 0) AS Rate,
-          Formate.categoryname
+          Formate.categoryname 
       FROM
       (
-          SELECT
+          SELECT 
               0 AS SlNo,
               m.itemcode,
               m.ItemID,
-              CASE
-                  WHEN LENGTH(m.itemname) > 100
-                  THEN SUBSTR(m.itemname, 1, 100)
-                  ELSE m.itemname
+              CASE 
+                  WHEN LENGTH(m.itemname) > 100 THEN SUBSTR(m.itemname, 0, 100)
+                  ELSE itemname 
               END AS itemname,
               t.itemtypename AS Formulation,
-              CASE
-                  WHEN LENGTH(m.strength1) > 100
-                  THEN SUBSTR(m.strength1, 1, 100)
-                  ELSE m.strength1
+              CASE 
+                  WHEN LENGTH(m.strength1) > 100 THEN SUBSTR(m.strength1, 0, 100) 
+                  ELSE m.strength1 
               END AS Strength,
               g.groupname AS GroupName,
-              e.edl,
+              e.edl,  
               0 AS COSUMPTION_From_1APR_24,
               0 AS Current_Stock,
               0 AS INDENT_25_26,
               m.isedl2021,
               mt.categoryname,
-              CASE
-                  WHEN m.isedl2021 = 'Y' THEN 'Yes'
-                  ELSE 'No'
-              END AS EDL2021,
-              CASE
-                  WHEN m.EDL2025 = 'Y' THEN 'Yes'
-                  ELSE 'No'
-              END AS EDL2025,
-              CASE
-                  WHEN m.edl2025flag IN ('COMMON', 'DHS') THEN 'Yes'
-                  ELSE 'No'
-              END AS IsIPHS,
+              CASE WHEN isedl2021 = 'Y' THEN 'Yes' ELSE 'No' END AS EDL2021,
+              CASE WHEN EDL2025 = 'Y' THEN 'Yes' ELSE 'No' END AS EDL2025,
+              CASE WHEN (edl2025flag = 'COMMON' OR edl2025flag = 'DHS') THEN 'Yes' ELSE 'No' END AS IsIPHS,
               mc.mcid
-          FROM masitems m
-          INNER JOIN masitemai ai
-              ON ai.itemid = m.itemid
-             AND ai.ACCYRSETID = 547
-          INNER JOIN masitemgroups g
-              ON m.groupid = g.groupid
-          INNER JOIN masitemcategories mt
-              ON mt.categoryid = m.categoryid
-          INNER JOIN masitemmaincategory mc
+          FROM masitems m 
+          INNER JOIN masitemai ai 
+              ON ai.itemid = m.itemid 
+             AND ai.ACCYRSETID = (SELECT accyrsetId + 1 FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate)
+          INNER JOIN masitemgroups g 
+              ON m.groupid = g.groupid  
+          INNER JOIN masitemcategories mt 
+              ON mt.categoryid = m.categoryid 
+          INNER JOIN masitemmaincategory mc 
               ON mc.MCID = mt.MCID
-          INNER JOIN masedl e
-              ON e.edlcat = m.edlcat
-          INNER JOIN masitemtypes t
+          INNER JOIN masedl e 
+              ON e.edlcat = m.edlcat 
+          INNER JOIN masitemtypes t 
               ON t.itemtypeid = m.itemtypeid
-          WHERE ${categoryClause}
-            AND m.isfreez_itpr IS NULL
+          WHERE ${categoryClause} 
+            AND m.isfreez_itpr IS NULL 
             AND m.edlcat <= (
-                SELECT t.edlindent
-                FROM masfacilities f
-                INNER JOIN masfacilitytypes t
-                    ON t.facilitytypeid = f.facilitytypeid
+                SELECT t.edlindent 
+                FROM masfacilities f 
+                INNER JOIN masfacilitytypes t ON t.facilitytypeid = f.facilitytypeid 
                 WHERE f.facilityid = :usrFacilityID
-            )
+            ) 
       ) Formate
 
-      LEFT JOIN v_itemrate vr
+      LEFT OUTER JOIN v_itemrate vr 
           ON vr.itemid = Formate.itemid
 
-      LEFT JOIN
+      LEFT OUTER JOIN
       (
-          SELECT
+          SELECT 
               ii.itemid,
-              SUM(tbo.issueqty) AS FacIssueqty
+              SUM(tbo.issueqty) AS FacIssueqty 
           FROM tbfacilityissues i
-          INNER JOIN tbfacilityissueitems ii
+          INNER JOIN tbfacilityissueitems ii 
               ON ii.issueid = i.issueid
-          INNER JOIN tbfacilityoutwards tbo
+          INNER JOIN tbfacilityoutwards tbo 
               ON tbo.issueitemid = ii.issueitemid
-          INNER JOIN tbfacilityreceiptbatches rb
+          INNER JOIN tbfacilityreceiptbatches rb 
               ON rb.inwno = tbo.inwno
-          WHERE i.status = 'C'
-            AND i.facilityid = :usrFacilityID
-            AND i.issuedate >= DATE '2025-04-01'
-            AND i.issuedate < DATE '2026-04-01'
+          WHERE 1=1 
+            AND i.status = 'C'
+            AND i.facilityid = :usrFacilityID 
+            AND i.issuedate BETWEEN (SELECT startdate FROM masaccyearsettings WHERE accyrsetId = (SELECT accyrsetId FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate)) 
+                                AND (SELECT enddate FROM masaccyearsettings WHERE accyrsetId = (SELECT accyrsetId FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate))
           GROUP BY ii.itemid
-      ) iss
+      ) iss 
           ON iss.itemid = Formate.ItemID
 
-      LEFT JOIN
+      LEFT OUTER JOIN
       (
-          SELECT
+          SELECT 
               itemid,
-              SUM(ReadyForIssue) AS CurStock
-          FROM
-          (
-              SELECT
+              SUM(ReadyForIssue) AS CurStock 
+          FROM (
+              SELECT 
                   b.batchno,
-                  b.expdate,
+                  b.expdate, 
                   b.inwno,
-                  t.facilityid,
-                  i.itemid,
-                  CASE
-                      WHEN b.qastatus = '1'
-                      THEN NVL(b.absrqty, 0) - NVL(iq.issueqty, 0)
-                  END AS ReadyForIssue
-              FROM tbfacilityreceiptbatches b
-              INNER JOIN tbfacilityreceiptitems i
-                  ON b.facreceiptitemid = i.facreceiptitemid
-              INNER JOIN tbfacilityreceipts t
-                  ON t.facreceiptid = i.facreceiptid
-              LEFT JOIN
-              (
-                  SELECT
+                  t.facilityid, 
+                  i.itemid, 
+                  (CASE WHEN b.qastatus = '1' THEN (NVL(b.absrqty, 0) - NVL(iq.issueqty, 0)) END) AS ReadyForIssue  
+              FROM tbfacilityreceiptbatches b   
+              INNER JOIN tbfacilityreceiptitems i 
+                  ON b.facreceiptitemid = i.facreceiptitemid 
+              INNER JOIN tbfacilityreceipts t 
+                  ON t.facreceiptid = i.facreceiptid                  
+              LEFT OUTER JOIN 
+              (  
+                  SELECT  
                       fs.facilityid,
                       fsi.itemid,
                       ftbo.inwno,
-                      SUM(NVL(ftbo.issueqty, 0)) AS issueqty
-                  FROM tbfacilityissues fs
-                  INNER JOIN tbfacilityissueitems fsi
-                      ON fsi.issueid = fs.issueid
-                  INNER JOIN tbfacilityoutwards ftbo
-                      ON ftbo.issueitemid = fsi.issueitemid
-                  WHERE fs.status = 'C'
-                    AND fs.facilityid = :usrFacilityID
-                  GROUP BY
-                      fsi.itemid,
-                      fs.facilityid,
-                      ftbo.inwno
-              ) iq
-                  ON b.inwno = iq.inwno
-                 AND iq.itemid = i.itemid
-                 AND iq.facilityid = t.facilityid
-              WHERE t.status = 'C'
-                AND (b.Whissueblock = 0 OR b.Whissueblock IS NULL)
-                AND b.expdate > SYSDATE
+                      SUM(NVL(ftbo.issueqty, 0)) AS issueqty   
+                  FROM tbfacilityissues fs 
+                  INNER JOIN tbfacilityissueitems fsi 
+                      ON fsi.issueid = fs.issueid 
+                  INNER JOIN tbfacilityoutwards ftbo 
+                      ON ftbo.issueitemid = fsi.issueitemid 
+                  WHERE fs.status = 'C'   
+                    AND fs.facilityid = :usrFacilityID             
+                  GROUP BY fsi.itemid, fs.facilityid, ftbo.inwno                     
+              ) iq 
+                  ON b.inwno = iq.inwno 
+                 AND iq.itemid = i.itemid 
+                 AND iq.facilityid = t.facilityid                 
+              WHERE t.Status = 'C'  
+                AND (b.Whissueblock = 0 OR b.Whissueblock IS NULL) 
+                AND b.expdate > SYSDATE 
                 AND t.facilityid = :usrFacilityID
-          )
-          GROUP BY itemid
+          ) 
+          GROUP BY itemid  
           HAVING SUM(ReadyForIssue) > 0
-      ) cr
+      ) cr 
           ON cr.itemid = Formate.ItemID
-
-      ORDER BY
-          DECODE(Formate.isedl2021, 'Y', 1),
-          DECODE(
-              Formate.categoryname,
-              'DRUGS', 1,
-              'CONSUMABLE AND SURGICAL', 2,
-              'SURGICALS AND SUTURES', 3
-          ),
+                    
+      ORDER BY 
+          DECODE(Formate.isedl2021, 'Y', 1), 
+          DECODE(Formate.categoryname, 'DRUGS', 1, 'CONSUMABLE AND SURGICAL', 2, 'SURGICALS AND SUTURES', 3),
           Formate.groupname,
           Formate.itemname
     `;
@@ -564,11 +657,12 @@ async function getDownloadAiFormatData(facilityId, categoryId) {
       strength: r.STRENGTH || r.strength || '-',
       groupName: r.GROUPNAME || r.groupname || '-',
       edl: r.EDL || r.edl || '-',
-      issuedFromWh: r.ISSUED_FROM_WH_01_APR_25_TO_31ST_OCT_25 !== undefined ? r.ISSUED_FROM_WH_01_APR_25_TO_31ST_OCT_25 : 0,
-      actualConsumption: r.ACTUAL_CONSUMPTION_FROM_01_APRIL_25_TO_31ST_OCT_25 !== undefined ? r.ACTUAL_CONSUMPTION_FROM_01_APRIL_25_TO_31ST_OCT_25 : 0,
-      estimatedConsumption: r.ESTIMATED_CONSUMPTION_FOR_ONE_YEAR_FROM_01_APRIL_25_TO_31ST_MARCH_26 !== undefined ? r.ESTIMATED_CONSUMPTION_FOR_ONE_YEAR_FROM_01_APRIL_25_TO_31ST_MARCH_26 : 0,
+      issuedFromWh: r.ISSUED_FROM_WH_01_APR_26_TO_31ST_OCT_27 !== undefined ? r.ISSUED_FROM_WH_01_APR_26_TO_31ST_OCT_27 : 0,
+      actualConsumption: r.ACTUAL_CONSUMPTION_FROM_01_APRIL_26_TO_31ST_OCT_26 !== undefined ? r.ACTUAL_CONSUMPTION_FROM_01_APRIL_26_TO_31ST_OCT_26 : 0,
+      estimatedConsumption: r.ESTIMATED_CONSUMPTION_FOR_ONE_YEAR_FROM_01_APRIL_26_TO_31ST_MARCH_27 !== undefined ? r.ESTIMATED_CONSUMPTION_FOR_ONE_YEAR_FROM_01_APRIL_26_TO_31ST_MARCH_27 : 0,
       currentStock: r.CURRENT_STOCK !== undefined ? r.CURRENT_STOCK : 0,
-      annualIndent2627: r.ANNUAL_INDENT_26_27 !== undefined ? r.ANNUAL_INDENT_26_27 : 0,
+      annualIndent2728: r.ANNUAL_INDENT_27_28 !== undefined ? r.ANNUAL_INDENT_27_28 : 0,
+      annualIndent2627: r.ANNUAL_INDENT_27_28 !== undefined ? r.ANNUAL_INDENT_27_28 : 0,
       rate: r.RATE !== undefined ? r.RATE : 0,
       categoryName: r.CATEGORYNAME || r.categoryname || '-'
     }));
@@ -2427,7 +2521,441 @@ async function getIndentPdfItems(indentId) {
   }
 }
 
+/**
+ * DAO Forwarded List - Main Page
+ * Matches: DAOApprovalMas.aspx - PopulateSO()
+ * Shows distinct categories with dispatch info for AYUSH facilities in DAO's district.
+ * Uses GROUP BY (instead of DISTINCT) + filters DISPATCHNO IS NOT NULL to avoid
+ * duplicate category rows from facilities without dispatch info.
+ */
+async function getDaoForwardedList(facilityId, finYearId) {
+  try {
+    const facId = Number(facilityId) || 0;
+    const fyId = Number(finYearId) || 547;
+
+    // Primary query — tries AYFACTYPEID filter (same as legacy)
+    let query = `
+      SELECT sc.CATNAME, sc.SUBCATID,
+             MAX(a.DISPATCHNO)                               AS DISPATCHNO,
+             to_char(MAX(a.DISPATCHDATE), 'dd-mm-yyyy')     AS DISPATCHDATE,
+             MAX(mf.DISTRICTID)                             AS DISTRICTID
+      FROM masAnualIndent a
+      INNER JOIN masFacilities mf ON mf.FACILITYID = a.FACILITYID
+      INNER JOIN MasSubItemCategory sc ON sc.SUBCATID = a.AICATEGORYID
+      WHERE a.STATUS       = 'C'
+        AND mf.ISACTIVE    = 1
+        AND mf.FACILITYTYPEID = 371
+        AND a.DISPATCHNO IS NOT NULL
+        AND a.ACCYRSETID   = :fyId
+        AND mf.AYFACTYPEID NOT IN (11, 12, 13, 14)
+        AND mf.DISTRICTID IN (
+          SELECT DISTINCT DISTRICTID FROM masFacilities WHERE FACILITYID = :facId
+        )
+      GROUP BY sc.CATNAME, sc.SUBCATID
+      ORDER BY sc.CATNAME
+    `;
+
+    let res;
+    try {
+      res = await db.execute(query, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    } catch (colErr) {
+      // Fallback: AYFACTYPEID column may not exist in all DB versions
+      console.warn('getDaoForwardedList: AYFACTYPEID column missing, using fallback query:', colErr.message);
+      const fallbackQuery = `
+        SELECT sc.CATNAME, sc.SUBCATID,
+               MAX(a.DISPATCHNO)                               AS DISPATCHNO,
+               to_char(MAX(a.DISPATCHDATE), 'dd-mm-yyyy')     AS DISPATCHDATE,
+               MAX(mf.DISTRICTID)                             AS DISTRICTID
+        FROM masAnualIndent a
+        INNER JOIN masFacilities mf ON mf.FACILITYID = a.FACILITYID
+        INNER JOIN MasSubItemCategory sc ON sc.SUBCATID = a.AICATEGORYID
+        WHERE a.STATUS       = 'C'
+          AND mf.ISACTIVE    = 1
+          AND mf.FACILITYTYPEID = 371
+          AND a.DISPATCHNO IS NOT NULL
+          AND a.ACCYRSETID   = :fyId
+          AND mf.DISTRICTID IN (
+            SELECT DISTINCT DISTRICTID FROM masFacilities WHERE FACILITYID = :facId
+          )
+        GROUP BY sc.CATNAME, sc.SUBCATID
+        ORDER BY sc.CATNAME
+      `;
+      res = await db.execute(fallbackQuery, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    }
+
+    return (res.rows || []).map((r, idx) => ({
+      slNo: idx + 1,
+      catName: r.CATNAME || r.catname || '',
+      subCatId: r.SUBCATID || r.subcatid,
+      dispatchNo: r.DISPATCHNO || r.dispatchno || '-',
+      dispatchDate: r.DISPATCHDATE || r.dispatchdate || '-',
+      districtId: r.DISTRICTID || r.districtid
+    }));
+  } catch (error) {
+    console.error('Error fetching DAO forwarded list:', error);
+    throw error;
+  }
+}
+
+/**
+ * DAO Detail Items - Detail Page (rptDAOApprovalAyush)
+ * Aggregated item-wise indent details for a specific subcategory in the DAO's district
+ */
+async function getDaoDetailItems(facilityId, subCatId, finYearId) {
+  try {
+    const facId = Number(facilityId) || 0;
+    const subId = Number(subCatId) || 0;
+    const fyId = Number(finYearId) || 547;
+
+    const query = `
+      SELECT m.ITEMCODE, m.ITEMNAME, m.STRENGTH1, m.UNIT,
+             sc.CATNAME || ' (' || c.CATEGORYNAME || ')' AS CATEGORYNAME,
+             NVL(agg.FACILITYINDENTQTY, 0) AS FACILITYINDENTQTY,
+             NVL(agg.CMHOAPPROVEDQTY, 0) AS DAOAPPROVEDQTY,
+             NVL(agg.AYUSHAPRQTY, 0) AS AYUSHAPRQTY
+      FROM masItems m
+      INNER JOIN masItemCategories c ON c.CATEGORYID = m.CATEGORYID
+      INNER JOIN MasSubItemCategory sc ON sc.SUBCATID = m.SUBCATID
+      INNER JOIN (
+        SELECT x.ITEMID,
+               SUM(NVL(x.FACILITYINDENTQTY, 0)) AS FACILITYINDENTQTY,
+               SUM(NVL(x.CMHOAPPROVEDQTY, 0)) AS CMHOAPPROVEDQTY,
+               SUM(NVL(x.AYUSHAPRQTY, 0)) AS AYUSHAPRQTY
+        FROM (
+          SELECT ai.ITEMID, ai.FACILITYINDENTQTY, ai.CMHOAPPROVEDQTY, ai.AYUSHAPRQTY
+          FROM masAnualIndent a
+          INNER JOIN anualIndent ai ON ai.INDENTID = a.INDENTID
+          INNER JOIN masFacilities f ON f.FACILITYID = a.FACILITYID
+          WHERE f.ISACTIVE = 1
+            AND f.FACILITYTYPEID = 371
+            AND a.STATUS = 'C'
+            AND f.DISTRICTID IN (
+              SELECT DISTINCT DISTRICTID FROM masFacilities WHERE FACILITYID = :facId
+            )
+            AND a.ACCYRSETID = :fyId
+        ) x
+        GROUP BY x.ITEMID
+      ) agg ON agg.ITEMID = m.ITEMID
+      WHERE m.SUBCATID = :subId
+      ORDER BY sc.CATNAME, m.ITEMCODE
+    `;
+
+    const res = await db.execute(query, { facId, fyId, subId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    return (res.rows || []).map((r, idx) => ({
+      slNo: idx + 1,
+      itemCode: r.ITEMCODE || r.itemcode || '-',
+      itemName: r.ITEMNAME || r.itemname || '-',
+      strength: r.STRENGTH1 || r.strength1 || '-',
+      unit: r.UNIT || r.unit || '-',
+      categoryName: r.CATEGORYNAME || r.categoryname || '-',
+      facilityIndentQty: Number(r.FACILITYINDENTQTY || 0),
+      daoApprovedQty: Number(r.DAOAPPROVEDQTY || 0),
+      ayushAprQty: Number(r.AYUSHAPRQTY || 0)
+    }));
+  } catch (error) {
+    console.error('Error fetching DAO detail items:', error);
+    throw error;
+  }
+}
+
+async function getDaoApprovalList(facilityId, finYearId, categoryId, statusFilter) {
+  try {
+    const facId = Number(facilityId) || 0;
+    const fyId = Number(finYearId) || 547;
+
+    let query = `
+      SELECT a.indentid, a.indentno, to_char(a.indentdate, 'dd-mm-yyyy') indentdate,
+             a.facilityid, mf.facilityname, a.accyrsetid, c.accyear,
+             coalesce(
+               (select sub.catname || ' (' || mc2.categoryname || ')' 
+                from massubitemcategory sub 
+                inner join masitemcategories mc2 on mc2.categoryid = sub.categoryid 
+                where sub.subcatid = a.aicategoryid),
+               mc.categoryname,
+               'General'
+             ) categoryname,
+             CASE 
+               WHEN a.Status = 'C' AND EXISTS (SELECT 1 FROM anualindent ai WHERE ai.indentid = a.indentid AND ai.isayushapproved = 'Y') THEN 'Approved'
+               WHEN a.Status = 'C' THEN 'Forwarded for Approval'
+               WHEN a.Status = 'S' THEN 'Sent for Approval'
+               WHEN a.Status = 'I' THEN 'Incomplete'
+               ELSE 'Forwarded for Approval'
+             END as status,
+             (SELECT COUNT(*) FROM anualindent ai WHERE ai.indentid = a.indentid AND NVL(ai.facilityindentqty, 0) > 0) as totalitems,
+             (SELECT NVL(SUM(ai.facilityindentqty), 0) FROM anualindent ai WHERE ai.indentid = a.indentid) as totalqty,
+             (SELECT NVL(SUM(CASE WHEN ai.isayushapproved = 'Y' THEN ai.ayushaprqty ELSE ai.facilityindentqty END), 0) FROM anualindent ai WHERE ai.indentid = a.indentid) as totalapprovedqty
+      FROM masAnualIndent a
+      JOIN masfacilities mf ON a.facilityid = mf.facilityid
+      JOIN masaccyearsettings c ON a.accyrsetid = c.accyrsetid
+      LEFT OUTER JOIN masitemcategories mc ON mc.categoryid = a.aicategoryid
+      WHERE (mf.districtid = (SELECT districtid FROM masfacilities WHERE facilityid = :facId) OR mf.facilitytypeid = 371)
+        AND a.accyrsetid = :fyId
+        AND a.Status IN ('C', 'S')
+    `;
+
+    const binds = { facId, fyId };
+
+    if (categoryId && categoryId !== '0' && categoryId !== 'All') {
+      query += ` AND a.aicategoryid = :catId `;
+      binds.catId = Number(categoryId);
+    }
+
+    query += ` ORDER BY a.indentdate DESC, a.indentid DESC `;
+
+    const res = await db.execute(query, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    let rows = res.rows || [];
+
+    if (statusFilter && statusFilter !== 'All') {
+      rows = rows.filter(r => (r.STATUS || '').toLowerCase().includes(statusFilter.toLowerCase()));
+    }
+
+    return rows.map((r, idx) => ({
+      slNo: idx + 1,
+      indentId: r.INDENTID || r.indentid,
+      indentNo: r.INDENTNO || r.indentno,
+      indentDate: r.INDENTDATE || r.indentdate,
+      facilityId: r.FACILITYID || r.facilityid,
+      facilityName: r.FACILITYNAME || r.facilityname,
+      accYear: r.ACCYEAR || r.accyear,
+      categoryName: r.CATEGORYNAME || r.categoryname || 'General',
+      status: r.STATUS || r.status || 'Forwarded for Approval',
+      totalItems: Number(r.TOTALITEMS || r.totalitems || 0),
+      totalQty: Number(r.TOTALQTY || r.totalqty || 0),
+      totalApprovedQty: Number(r.TOTALAPPROVEDQTY || r.totalapprovedqty || 0)
+    }));
+  } catch (error) {
+    console.error('Error fetching DAO approval list:', error);
+    throw error;
+  }
+}
+
+async function getDaoIndentItems(indentId) {
+  try {
+    const indId = Number(indentId);
+    const query = `
+      SELECT ai.anualindentid, ai.indentid, ai.itemid,
+             m.itemcode, m.itemname, m.strengths, m.unit,
+             nvl(ai.facilityindentqty, 0) as facilityindentqty,
+             nvl(ai.currentstock, 0) as currentstock,
+             nvl(ai.consumption, 0) as consumption,
+             nvl(ai.ayushaprqty, ai.facilityindentqty) as ayushaprqty,
+             nvl(ai.isayushapproved, 'N') as isayushapproved
+      FROM anualindent ai
+      JOIN masitems m ON ai.itemid = m.itemid
+      WHERE ai.indentid = :indId
+        AND nvl(ai.facilityindentqty, 0) > 0
+      ORDER BY m.itemname
+    `;
+
+    const res = await db.execute(query, { indId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    return (res.rows || []).map((r, idx) => ({
+      slNo: idx + 1,
+      anualIndentId: r.ANUALINDENTID || r.anualindentid,
+      indentId: r.INDENTID || r.indentid,
+      itemId: r.ITEMID || r.itemid,
+      itemCode: r.ITEMCODE || r.itemcode || '-',
+      itemName: r.ITEMNAME || r.itemname || '-',
+      strengths: r.STRENGTHS || r.strengths || '-',
+      unit: r.UNIT || r.unit || 'NOS',
+      facilityIndentQty: Number(r.FACILITYINDENTQTY || 0),
+      currentStock: Number(r.CURRENTSTOCK || 0),
+      consumption: Number(r.CONSUMPTION || 0),
+      ayushAprQty: Number(r.AYUSHAPRQTY !== null && r.AYUSHAPRQTY !== undefined ? r.AYUSHAPRQTY : r.FACILITYINDENTQTY || 0),
+      isAyushApproved: r.ISAYUSHAPPROVED || r.isayushapproved || 'N'
+    }));
+  } catch (error) {
+    console.error('Error fetching DAO indent items:', error);
+    throw error;
+  }
+}
+
+async function approveDaoIndent(indentId, userId, items) {
+  let connection;
+  try {
+    connection = await db.getConnection();
+    const indId = Number(indentId);
+    const uId = Number(userId) || null;
+
+    if (Array.isArray(items) && items.length > 0) {
+      for (const item of items) {
+        const itemAiId = Number(item.anualIndentId);
+        const aprQty = Number(item.ayushAprQty !== undefined ? item.ayushAprQty : item.facilityIndentQty);
+        await connection.execute(
+          `UPDATE anualindent 
+           SET ayushaprqty = :aprQty, isayushapproved = 'Y', lastupdateddt = SYSDATE 
+           WHERE anualindentid = :itemAiId AND indentid = :indId`,
+          { aprQty, itemAiId, indId }
+        );
+      }
+    } else {
+      await connection.execute(
+        `UPDATE anualindent 
+         SET ayushaprqty = nvl(ayushaprqty, facilityindentqty), isayushapproved = 'Y', lastupdateddt = SYSDATE 
+         WHERE indentid = :indId`,
+        { indId }
+      );
+    }
+
+    await connection.execute(
+      `UPDATE masAnualIndent 
+       SET approveddt = SYSDATE, approvedby = :uId, status = 'C' 
+       WHERE indentid = :indId`,
+      { uId, indId }
+    );
+
+    await connection.commit();
+    return { success: true };
+  } catch (error) {
+    if (connection) {
+      try { await connection.rollback(); } catch (e) {}
+    }
+    console.error('Error approving DAO indent:', error);
+    throw error;
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (e) {}
+    }
+  }
+}
+
+async function getDaoStatusReport(facilityId, finYearId, categoryId) {
+  try {
+    const facId = Number(facilityId) || 0;
+    const fyId = Number(finYearId) || 547;
+    const catId = Number(categoryId) || 1;
+
+    let whereclause = '';
+    if (catId === 3 || catId === 4) {
+      whereclause = ' and fta.FACTYPEID in (8,5,2) ';
+    } else if (catId === 5 || catId === 6) {
+      whereclause = ' and fta.FACTYPEID in (2) ';
+    } else if (catId === 7) {
+      whereclause = ' and fta.FACTYPEID in (2,13) ';
+    } else if (catId === 8) {
+      whereclause = ' ';
+    } else {
+      whereclause = ' and fta.FACTYPEID not in (5,13) ';
+    }
+
+    const query = `
+      select 0 as SlNo, d.districtname, fta.FACTYPENAME, fm.facilityid, fm.facilityname,
+             case 
+               when ai.status = 'C' then 'Annual Indent Uploaded and Forwarded' 
+               when ai.status = 'I' then 'Annual Indent Uploaded but not Forwarded' 
+               else 'Indent Not Uploaded' 
+             end as status,
+             ai.AIcategoryid,
+             nvl(sc.catname || ' (' || mc.categoryname || ')', (select sc2.catname || ' (' || mc2.categoryname || ')' from MasSubItemCategory sc2 inner join masitemcategories mc2 on mc2.categoryid=sc2.categoryid where sc2.subcatid=:catId)) as categoryname
+      from masfacilities fm  
+      left outer join (
+        select facilityid, status, AIcategoryid 
+        from masanualindent
+        where accyrsetid = :fyId and AIcategoryid = :catId
+      ) ai on ai.facilityid = fm.facilityid  
+      inner join masdistricts d on d.districtid = fm.districtid
+      inner join masfacilitytypes ft on ft.facilitytypeid = fm.facilitytypeid  
+      inner join masfacilitytypeayush fta on fta.FACTYPEID = fm.AYFACTYPEID 
+      left outer join MasSubItemCategory sc on sc.SUBCATID = ai.AIcategoryid 
+      left outer join masitemcategories mc on mc.categoryid = sc.categoryid
+      where fm.isactive = 1 
+        ${whereclause}
+        and fm.facilitytypeid = 371 
+        and fm.districtid in (select districtid from masfacilities where facilityid = :facId) 
+        and fm.facilityid not in (:facId) 
+      order by ft.orderdp, fm.facilityname
+    `;
+
+    const res = await db.execute(query, { facId, fyId, catId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const rows = res.rows || [];
+
+    return rows.map((r, idx) => ({
+      slNo: idx + 1,
+      districtName: r.DISTRICTNAME || r.districtname || '',
+      factypeName: r.FACTYPENAME || r.factypename || '',
+      facilityId: r.FACILITYID || r.facilityid,
+      facilityName: r.FACILITYNAME || r.facilityname,
+      status: r.STATUS || r.status || 'Indent Not Uploaded',
+      aiCategoryId: r.AICATEGORYID || r.aicategoryid || catId,
+      categoryName: r.CATEGORYNAME || r.categoryname || ''
+    }));
+  } catch (error) {
+    console.error('Error fetching DAO status report:', error);
+    throw error;
+  }
+}
+
+async function getDaoItemWiseAi(facilityId, finYearId, categoryId) {
+  try {
+    const facId = Number(facilityId) || 0;
+    const fyId = Number(finYearId) || 547;
+    const subCatId = Number(categoryId) || 0;
+
+    let strFilter = '';
+    const binds = { facId, fyId };
+
+    if (subCatId > 0) {
+      strFilter = ` and m.subcatid = :subCatId `;
+      binds.subCatId = subCatId;
+    }
+
+    const query = `
+      select m.itemid, m.itemcode, m.itemname, m.strength1, m.unit,
+             sc.catname || ' (' || c.categoryname || ')' as categoryname,
+             nvl(ai.facilityindentqty, 0) as facilityindentqty,
+             nvl(ai.cmhoapprovedqty, 0) as daoapprovedqty,
+             nvl(ai.ayushaprqty, 0) as ayushaprqty
+      from masitems m 
+      inner join masitemcategories c on c.categoryid = m.categoryid
+      inner join MasSubItemCategory sc on sc.subcatid = m.subcatid
+      inner join (
+        select x.itemid,
+               sum(nvl(facilityindentqty, 0)) as facilityindentqty,
+               sum(nvl(cmhoapprovedqty, 0)) as cmhoapprovedqty,
+               sum(nvl(ayushaprqty, 0)) as ayushaprqty
+        from (
+          select a.indentid, a.indentno, a.indentdate, a.facilityid, f.facilityname,
+                 ai.itemid, ai.anualindentid, ai.facilityindentqty, ai.cmhoapprovedqty, ai.ayushaprqty
+          from masanualindent a
+          inner join anualindent ai on ai.indentid = a.indentid
+          inner join masfacilities f on f.facilityid = a.facilityid
+          where f.isactive = 1
+            and f.facilitytypeid = 371
+            and f.districtid in (select distinct districtid from masfacilities where facilityid = :facId)
+            and a.status = 'C'
+            and a.accyrsetid = :fyId
+        ) x group by x.itemid
+      ) ai on ai.itemid = m.itemid
+      where 1=1 ${strFilter}
+      order by sc.catname, m.itemcode
+    `;
+
+    const res = await db.execute(query, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    return (res.rows || []).map((r, idx) => ({
+      slNo: idx + 1,
+      itemId: r.ITEMID || r.itemid,
+      itemCode: r.ITEMCODE || r.itemcode || '-',
+      itemName: r.ITEMNAME || r.itemname || '-',
+      strength: r.STRENGTH1 || r.strength1 || '-',
+      unit: r.UNIT || r.unit || 'NOS',
+      categoryName: r.CATEGORYNAME || r.categoryname || '',
+      facilityIndentQty: Number(r.FACILITYINDENTQTY || r.facilityindentqty || 0),
+      daoApprovedQty: Number(r.DAOAPPROVEDQTY || r.daoapprovedqty || 0),
+      ayushAprQty: Number(r.AYUSHAPRQTY || r.ayushaprqty || 0)
+    }));
+  } catch (error) {
+    console.error('Error fetching DAO item wise AI details:', error);
+    throw error;
+  }
+}
+
 module.exports = {
+  getDaoForwardedList,
+  getDaoDetailItems,
+  getDaoApprovalList,
+  getDaoIndentItems,
+  approveDaoIndent,
+  getDaoStatusReport,
+  getDaoItemWiseAi,
   getIndentPdfItems,
   getNonEdlCreateFinYears,
   getReagentCreateFinYears,

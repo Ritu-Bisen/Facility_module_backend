@@ -18,11 +18,23 @@ async function getWarehouseIndents(facilityId, accYear) {
             END as "receiptStatus",
             r.FacReceiptNo as "receiptNo",
             TO_CHAR(r.FacReceiptDate, 'DD-MM-YYYY') as "receiptDate",
-            r.FacReceiptID as "receiptId"
+            r.FacReceiptID as "receiptId",
+            CAST(del.DROPDATE AS DATE) AS "dropDate1",
+            TO_CHAR(del.DROPDATE, 'DD-MM-YYYY') AS "deliveryDate",
+            TO_CHAR(del.DROPDATE, 'DD-MM-RR HH24:MI:SS') AS "dropDateTime",
+            case when r.facreceiptdate is null and del.DROPDATE is not null then round(sysdate-CAST(del.DROPDATE AS DATE)) else 0 end as "noOfDaysSinceDeliveredNotReceived"
         FROM tbIndents i
         LEFT JOIN masWarehouses w ON i.WarehouseID = w.WarehouseID
         INNER JOIN masAccYearSettings y ON (i.RequestDate BETWEEN y.StartDate AND y.EndDate)
         LEFT JOIN tbFacilityReceipts r ON r.IndentID = i.IndentID
+        LEFT JOIN (
+            SELECT tbb.indentid as IndID, tbi.DROPDATE 
+            FROM TBTRAVALEMASTER tb 
+            INNER JOIN masvehical v ON v.vid = tb.vid
+            INNER JOIN TBINDENTTRAVALE tbi ON tbi.voucherid = tb.voucherid
+            INNER JOIN tbindents tbb ON tbb.indentid = tbi.indentid
+            WHERE tbi.DROPDATE IS NOT NULL AND tbb.facilityid = :facilityId
+        ) del ON del.IndID = i.indentid
         WHERE i.FacilityID = :facilityId
           AND y.ACCYRSETID = :accYear
           AND i.Status NOT IN ('I', 'D')
