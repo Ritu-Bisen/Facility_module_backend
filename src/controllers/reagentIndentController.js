@@ -220,17 +220,82 @@ let mockWarehouseIndents = [
 ];
 
 /**
+ * GET /api/reagent-indent/fin-years
+ * Fetch all financial years from masaccyearsettings
+ */
+async function getFinancialYears(req, res) {
+  try {
+    const query = `
+      SELECT 
+        accyrsetid as "accYrSetId",
+        accyear as "accYear",
+        shaccyear as "shAccYear",
+        case when sysdate between startdate and enddate then 'Y' else 'N' end as "isCurrent"
+      FROM masaccyearsettings
+      ORDER BY accyrsetid DESC
+    `;
+
+    let rows = [];
+    try {
+      const result = await db.execute(query, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      rows = (result.rows || []).map(r => ({
+        accYrSetId: r.ACCYRSETID || r.accYrSetId,
+        accYear: r.ACCYEAR || r.accYear,
+        shAccYear: r.SHACCYEAR || r.shAccYear,
+        isCurrent: (r.ISCURRENT || r.isCurrent || r.IS_CURRENT) === 'Y'
+      }));
+    } catch (err) {
+      console.warn('DB query for fin-years failed, using fallback:', err.message);
+    }
+
+    if (!rows || rows.length === 0) {
+      rows = [
+        { accYrSetId: 548, accYear: '2027-2028', shAccYear: '27-28', isCurrent: false },
+        { accYrSetId: 547, accYear: '2026-2027', shAccYear: '26-27', isCurrent: true },
+        { accYrSetId: 546, accYear: '2025-2026', shAccYear: '25-26', isCurrent: false },
+        { accYrSetId: 545, accYear: '2024-2025', shAccYear: '24-25', isCurrent: false },
+        { accYrSetId: 544, accYear: '2023-2024', shAccYear: '23-24', isCurrent: false },
+        { accYrSetId: 542, accYear: '2022-2023', shAccYear: '22-23', isCurrent: false },
+        { accYrSetId: 541, accYear: '2021-2022', shAccYear: '21-22', isCurrent: false },
+        { accYrSetId: 540, accYear: '2020-2021', shAccYear: '20-21', isCurrent: false },
+        { accYrSetId: 539, accYear: '2019-2020', shAccYear: '19-20', isCurrent: false },
+        { accYrSetId: 537, accYear: '2018-2019', shAccYear: '18-19', isCurrent: false }
+      ];
+    }
+
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('getFinancialYears error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch financial years' });
+  }
+}
+
+/**
  * GET /api/reagent-indent/warehouse-indent
  * Fetch Reagent Indents to Warehouse matching DMERegAnualindentMain.aspx.cs
  */
 async function getWarehouseIndents(req, res) {
   try {
     const facilityId = req.user?.facilityId || 23558;
-    const { statusFilter, accYear } = req.query;
+    const { statusFilter, accYear, finYear } = req.query;
+    const selectedYear = finYear || accYear;
 
     let strFilter = '';
+    const binds = { facilityId };
+
     if (statusFilter && statusFilter !== 'All') {
-      strFilter += ` and a.Status = '${statusFilter}' `;
+      strFilter += ` and a.Status = :statusFilter `;
+      binds.statusFilter = statusFilter;
+    }
+
+    if (selectedYear && selectedYear !== 'All') {
+      if (!isNaN(selectedYear) && Number(selectedYear) > 100) {
+        strFilter += ` and (a.accyrsetid = :selectedYear or c.accyrsetid = :selectedYear) `;
+        binds.selectedYear = Number(selectedYear);
+      } else {
+        strFilter += ` and (c.AccYear = :selectedYear or c.SHAccYear = :selectedYear) `;
+        binds.selectedYear = String(selectedYear);
+      }
     }
 
     const query = `
@@ -247,7 +312,7 @@ async function getWarehouseIndents(req, res) {
 
     let rows = [];
     try {
-      const result = await db.execute(query, { facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      const result = await db.execute(query, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT });
       rows = (result.rows || []).map(r => ({
         NOCID: r.NOCID || r.nocid,
         NOCNumber: r.NOCNUMBER || r.nocnumber || r.NOCNumber || r.INDENTNO || r.indentno,
@@ -266,10 +331,18 @@ async function getWarehouseIndents(req, res) {
     // Merge mock warehouse indents if DB results don't contain them
     if (!rows || rows.length === 0) {
       rows = [...mockWarehouseIndents];
+      if (selectedYear && selectedYear !== 'All') {
+        rows = rows.filter(r => r.AccYear === selectedYear || String(r.AccYrSetId) === String(selectedYear));
+      }
+      if (statusFilter && statusFilter !== 'All') {
+        rows = rows.filter(r => (r.StatusCode || r.Status) === statusFilter);
+      }
     } else {
-      // Add any newly generated in-memory items not present in DB result
+      // Add any newly generated in-memory items not present in DB result matching filters
       mockWarehouseIndents.forEach(m => {
-        if (!rows.some(r => String(r.NOCID) === String(m.NOCID) || r.NOCNumber === m.NOCNumber)) {
+        const matchesYear = !selectedYear || selectedYear === 'All' || m.AccYear === selectedYear;
+        const matchesStatus = !statusFilter || statusFilter === 'All' || m.StatusCode === statusFilter;
+        if (matchesYear && matchesStatus && !rows.some(r => String(r.NOCID) === String(m.NOCID) || r.NOCNumber === m.NOCNumber)) {
           rows.unshift(m);
         }
       });
@@ -340,17 +413,21 @@ async function generateIndentHeader(req, res) {
     }
 
     // 2. Generate Indent Number Logic
-    // Step A: Fetch Year Code using SELECT yearcode FROM AccYear WHERE AccYrSetID = :accYrSetId
-    let yearCode = '26';
+    // Step A: Fetch Year Code using SELECT shaccyear FROM masaccyearsettings WHERE AccYrSetID = :accYrSetId
+    let yearCode = '26-27';
     try {
-      const yearQuery = `SELECT yearcode FROM AccYear WHERE AccYrSetID = :accYrSetId`;
+      const yearQuery = `SELECT shaccyear as yearcode FROM masaccyearsettings WHERE AccYrSetID = :accYrSetId`;
       const yearRes = await db.execute(yearQuery, { accYrSetId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
       if (yearRes.rows && yearRes.rows.length > 0) {
-        yearCode = String(yearRes.rows[0].YEARCODE || yearRes.rows[0].yearcode || '26');
+        yearCode = String(yearRes.rows[0].YEARCODE || yearRes.rows[0].yearcode || '26-27');
       }
     } catch (err) {
-      console.warn('AccYear table query fallback:', err.message);
-      yearCode = finYear === '2026-2027' ? '26-27' : finYear === '2025-2026' ? '25-26' : '26';
+      console.warn('masaccyearsettings table query fallback:', err.message);
+      if (finYear && finYear.includes('-')) {
+        yearCode = finYear.split('-').map(y => y.slice(-2)).join('-');
+      } else {
+        yearCode = '26-27';
+      }
     }
 
     // Step B: Fetch latest sequence from DB for current Fin Year (FacilityID/RG last_sequence + 1/YearCode)
@@ -1446,6 +1523,7 @@ async function deleteReagentItem(req, res) {
 }
 
 module.exports = {
+  getFinancialYears,
   getMedicalColleges,
   getFreezRcDetails,
   getWarehouseIndents,

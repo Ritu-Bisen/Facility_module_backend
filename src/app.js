@@ -174,6 +174,8 @@ app.use('/api/return-to-warehouse', require('./routes/returnToWarehouseRoutes'))
 app.use('/api/reagent-indent', require('./routes/reagentIndentRoutes'));
 app.use('/api/program-indent', require('./routes/programIndentRoutes'));
 app.use('/api/opening-stock', require('./routes/openingStockRoutes'));
+app.use('/api/special-receipt', require('./routes/specialReceiptRoutes'));
+app.use('/api/expiry-voucher', require('./routes/expiryVoucherRoutes'));
 
 // 404 Handler for unmatched API routes
 app.use((req, res, next) => {

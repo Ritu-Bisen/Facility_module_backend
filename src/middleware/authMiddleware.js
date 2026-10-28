@@ -18,29 +18,25 @@ async function authenticate(req, res, next) {
   try {
     const decoded = verifyAccessToken(token);
     
-    // Enforce Single Session if session ID exists
-    let user;
-    try {
-      user = await authModel.findUserById(decoded.userId);
-    } catch (dbErr) {
-      logger.warn('DB user lookup warning in auth middleware: ' + dbErr.message);
-    }
+    // Single Session enforcement is opt-in (disabled by default to allow multi-device/multi-user logins in hospitals)
+    if (process.env.ENFORCE_SINGLE_SESSION === 'true') {
+      let activeSessionId;
+      try {
+        activeSessionId = await authModel.getSessionId(decoded.userId);
+      } catch (dbErr) {
+        logger.warn('DB session lookup warning in auth middleware: ' + dbErr.message);
+      }
 
-    if (!user) {
-      // Allow valid JWT payload if DB user lookup is empty or unavailable
-      req.user = decoded;
-      return next();
-    }
-
-    let activeSessionId;
-    try {
-      activeSessionId = await authModel.getSessionId(decoded.userId);
-    } catch (dbErr) {
-      logger.warn('DB session lookup warning in auth middleware: ' + dbErr.message);
-    }
-
-    if (activeSessionId && decoded.sessionId && activeSessionId !== decoded.sessionId) {
-      return res.status(401).json({ success: false, message: 'Session expired because your account was logged in from another location.' });
+      if (activeSessionId && decoded.sessionId) {
+        const cleanActive = String(activeSessionId).trim();
+        const cleanDecoded = String(decoded.sessionId).trim();
+        if (cleanActive && cleanDecoded && cleanActive !== cleanDecoded) {
+          return res.status(401).json({
+            success: false,
+            message: 'Session expired because your account was logged in from another location.'
+          });
+        }
+      }
     }
 
     req.user = decoded;

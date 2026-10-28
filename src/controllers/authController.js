@@ -226,7 +226,15 @@ async function refreshToken(req, res, next) {
       emailId: decoded.emailId,
       firstName: decoded.firstName,
       lastName: decoded.lastName,
-      facilityId: decoded.facilityId
+      facilityId: decoded.facilityId,
+      facilityTypeId: decoded.facilityTypeId,
+      facilitytypeid: decoded.facilitytypeid,
+      facilityTypeCode: decoded.facilityTypeCode,
+      facilityType: decoded.facilityType,
+      facilityTypeName: decoded.facilityTypeName,
+      roleId: decoded.roleId,
+      roleName: decoded.roleName,
+      sessionId: decoded.sessionId
     };
 
     const tokens = generateTokens(payload);

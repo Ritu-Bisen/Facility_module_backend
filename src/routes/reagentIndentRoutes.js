@@ -14,6 +14,9 @@ router.get('/freez-rc-details', ctrl.getFreezRcDetails);
 // GET /api/reagent-indent/warehouse-indent
 router.get('/warehouse-indent', ctrl.getWarehouseIndents);
 
+// GET /api/reagent-indent/fin-years
+router.get('/fin-years', ctrl.getFinancialYears);
+
 // GET /api/reagent-indent/check-incomplete
 router.get('/check-incomplete', ctrl.checkIncompleteIndent);
 
