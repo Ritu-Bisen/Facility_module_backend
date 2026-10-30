@@ -396,14 +396,21 @@ async function getDownloadAiFormatData(facilityId, categoryId, facilityTypeId) {
       const dmeQuery = `
         select 0 SlNo,Formate.itemcode,Formate.itemname,Formate.Formulation,Formate.Strength,Formate.GroupName,
           Formate.edl,nvl(Consumption.COSUMPTION_From_1APR_25,'0') COSUMPTION_From_1APR_26, nvl(cr.CurStock,0) as Current_Stock,INDENT_26_27  as INDENT_27_28
-    ,nvl(vr.singlerate,0) as Rate,Formate.unitcount as PACKAGINGUNIT,Formate.categoryname
+    ,nvl(vr.singlerate,0) as Rate,Formate.unitcount as PACKAGINGUNIT,Formate.categoryname,
+    Formate.EDLType
           from
           (
           select 0 SlNo ,m.itemcode,m.ItemID,case when length(m.itemname)>100 
           then substr(m.itemname,0,100) else itemname end itemname,t.itemtypename Formulation,
           case when length(m.strength1)>100 then substr(m.strength1,0,100) else m.strength1 
           end Strength,g.groupname GroupName,e.edl, 
-                0 COSUMPTION_From_1APR_25,0 INDENT_26_27   ,m.unitcount ,mc.mcid,mt.categoryname  
+                0 COSUMPTION_From_1APR_25,0 INDENT_26_27   ,m.unitcount ,mc.mcid,mt.categoryname,
+                CASE 
+                    WHEN m.EDL2025 = 'Y' 
+                     AND (m.edl2025flag = 'COMMON' OR m.edl2025flag = 'CME' OR m.edl2025flag = 'DME') 
+                    THEN 'EDL' 
+                    ELSE 'Non EDL' 
+                END AS EDLType  
                 from masitems m inner join masitemgroups g on m.groupid=g.groupid  
                 inner join masitemcategories mt on mt.categoryid=m.categoryid 
                 inner join masitemmaincategory mc on mc.mcid=mt.mcid
@@ -480,6 +487,7 @@ async function getDownloadAiFormatData(facilityId, categoryId, facilityTypeId) {
         rate: Number(r.RATE !== undefined ? r.RATE : 0),
         packagingUnit: Number(r.PACKAGINGUNIT !== undefined ? r.PACKAGINGUNIT : 1),
         categoryName: r.CATEGORYNAME || r.categoryname || 'DRUGS',
+        edlType: (String(r.EDLTYPE || r.edltype || r.EDLType || '').trim().toUpperCase() === 'YES' || String(r.EDLTYPE || r.edltype || r.EDLType || '').trim().toUpperCase() === 'Y' || String(r.EDLTYPE || r.edltype || r.EDLType || '').trim().toUpperCase() === 'EDL') ? 'EDL' : 'Non EDL',
         isDme: true
       }));
     }
@@ -504,148 +512,196 @@ async function getDownloadAiFormatData(facilityId, categoryId, facilityTypeId) {
     }
 
     const query = `
-      SELECT 
-          0 AS SlNo,
-          Formate.itemcode,
-          SUBSTR(Formate.itemname, 1, 100) AS itemname,
-          Formate.Formulation,
-          SUBSTR(Formate.Strength, 1, 100) AS Strength,
-          Formate.GroupName,
-          Formate.edl,
-          NVL(iss.FacIssueqty, 0) AS Issued_From_WH_01_Apr_26_to_31st_Oct_26,
-          0 AS Actual_Consumption_From_01_April_26_to_31st_Oct_26,
-          0 AS Estimated_Consumption_For_One_Year_From_01_April_26_to_31st_March_26,
-          NVL(cr.CurStock, 0) AS Current_Stock,
-          0 AS ANNUAL_INDENT_27_28,
-          NVL(vr.singlerate, 0) AS Rate,
-          Formate.categoryname 
-      FROM
-      (
-          SELECT 
-              0 AS SlNo,
-              m.itemcode,
-              m.ItemID,
-              CASE 
-                  WHEN LENGTH(m.itemname) > 100 THEN SUBSTR(m.itemname, 0, 100)
-                  ELSE itemname 
-              END AS itemname,
-              t.itemtypename AS Formulation,
-              CASE 
-                  WHEN LENGTH(m.strength1) > 100 THEN SUBSTR(m.strength1, 0, 100) 
-                  ELSE m.strength1 
-              END AS Strength,
-              g.groupname AS GroupName,
-              e.edl,  
-              0 AS COSUMPTION_From_1APR_24,
-              0 AS Current_Stock,
-              0 AS INDENT_25_26,
-              m.isedl2021,
-              mt.categoryname,
-              CASE WHEN isedl2021 = 'Y' THEN 'Yes' ELSE 'No' END AS EDL2021,
-              CASE WHEN EDL2025 = 'Y' THEN 'Yes' ELSE 'No' END AS EDL2025,
-              CASE WHEN (edl2025flag = 'COMMON' OR edl2025flag = 'DHS') THEN 'Yes' ELSE 'No' END AS IsIPHS,
-              mc.mcid
-          FROM masitems m 
-          INNER JOIN masitemai ai 
-              ON ai.itemid = m.itemid 
-             AND ai.ACCYRSETID = (SELECT accyrsetId + 1 FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate)
-          INNER JOIN masitemgroups g 
-              ON m.groupid = g.groupid  
-          INNER JOIN masitemcategories mt 
-              ON mt.categoryid = m.categoryid 
-          INNER JOIN masitemmaincategory mc 
-              ON mc.MCID = mt.MCID
-          INNER JOIN masedl e 
-              ON e.edlcat = m.edlcat 
-          INNER JOIN masitemtypes t 
-              ON t.itemtypeid = m.itemtypeid
-          WHERE ${categoryClause} 
-            AND m.isfreez_itpr IS NULL 
-            AND m.edlcat <= (
-                SELECT t.edlindent 
+    SELECT 
+        0 AS SlNo,
+        Formate.itemcode,
+        SUBSTR(Formate.itemname, 1, 100) AS itemname,
+        Formate.Formulation,
+        SUBSTR(Formate.Strength, 1, 100) AS Strength,
+        Formate.GroupName,
+        Formate.edl,
+        NVL(iss.FacIssueqty, 0) AS Issued_From_WH_01_Apr_26_to_31st_Oct_26,
+        0 AS Actual_Consumption_From_01_April_26_to_31st_Oct_26,
+        0 AS Estimated_Consumption_For_One_Year_From_01_April_26_to_31st_March_27,
+        NVL(cr.CurStock, 0) AS Current_Stock,
+        0 AS ANNUAL_INDENT_27_28,
+        NVL(vr.singlerate, 0) AS Rate,
+        Formate.categoryname,
+        Formate.EDLType
+    FROM
+    (
+        SELECT 
+            0 AS SlNo,
+            m.itemcode,
+            m.ItemID,
+            CASE 
+                WHEN LENGTH(m.itemname) > 100 THEN SUBSTR(m.itemname, 0, 100)
+                ELSE itemname 
+            END AS itemname,
+            t.itemtypename AS Formulation,
+            CASE 
+                WHEN LENGTH(m.strength1) > 100 THEN SUBSTR(m.strength1, 0, 100) 
+                ELSE m.strength1 
+            END AS Strength,
+            g.groupname AS GroupName,
+            e.edl,
+            0 AS COSUMPTION_From_1APR_24,
+            0 AS Current_Stock,
+            0 AS INDENT_25_26,
+            m.isedl2021,
+            mt.categoryname,
+            CASE 
+                WHEN isedl2021 = 'Y' THEN 'Yes' 
+                ELSE 'No' 
+            END AS EDL2021,
+            CASE 
+                WHEN EDL2025 = 'Y' THEN 'Yes' 
+                ELSE 'No' 
+            END AS EDL2025,
+            CASE 
+                WHEN (edl2025flag = 'COMMON' OR edl2025flag = 'DHS') 
+                THEN 'Yes' 
+                ELSE 'No' 
+            END AS IsIPHS,
+            CASE 
+                WHEN EDL2025 = 'Y' 
+                 AND (edl2025flag = 'COMMON' OR edl2025flag = 'DHS') 
+                THEN 'EDL' 
+                ELSE 'Non EDL' 
+            END AS EDLType,
+            mc.mcid
+        FROM masitems m 
+        INNER JOIN masitemai ai 
+            ON ai.itemid = m.itemid 
+           AND ai.ACCYRSETID = (
+                SELECT accyrsetId + 1 
+                FROM masaccyearsettings 
+                WHERE SYSDATE BETWEEN startdate AND enddate
+           )
+        INNER JOIN masitemgroups g 
+            ON m.groupid = g.groupid  
+        INNER JOIN masitemcategories mt 
+            ON mt.categoryid = m.categoryid 
+        INNER JOIN masitemmaincategory mc 
+            ON mc.MCID = mt.MCID
+        INNER JOIN masedl e 
+            ON e.edlcat = m.edlcat 
+        INNER JOIN masitemtypes t 
+            ON t.itemtypeid = m.itemtypeid
+        WHERE ${categoryClause}
+          AND m.isfreez_itpr IS NULL 
+          AND m.edlcat <= (
+                SELECT ft.edlindent 
                 FROM masfacilities f 
-                INNER JOIN masfacilitytypes t ON t.facilitytypeid = f.facilitytypeid 
+                INNER JOIN masfacilitytypes ft 
+                    ON ft.facilitytypeid = f.facilitytypeid 
                 WHERE f.facilityid = :usrFacilityID
-            ) 
-      ) Formate
-
-      LEFT OUTER JOIN v_itemrate vr 
-          ON vr.itemid = Formate.itemid
-
-      LEFT OUTER JOIN
-      (
-          SELECT 
-              ii.itemid,
-              SUM(tbo.issueqty) AS FacIssueqty 
-          FROM tbfacilityissues i
-          INNER JOIN tbfacilityissueitems ii 
-              ON ii.issueid = i.issueid
-          INNER JOIN tbfacilityoutwards tbo 
-              ON tbo.issueitemid = ii.issueitemid
-          INNER JOIN tbfacilityreceiptbatches rb 
-              ON rb.inwno = tbo.inwno
-          WHERE 1=1 
-            AND i.status = 'C'
-            AND i.facilityid = :usrFacilityID 
-            AND i.issuedate BETWEEN (SELECT startdate FROM masaccyearsettings WHERE accyrsetId = (SELECT accyrsetId FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate)) 
-                                AND (SELECT enddate FROM masaccyearsettings WHERE accyrsetId = (SELECT accyrsetId FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate))
-          GROUP BY ii.itemid
-      ) iss 
-          ON iss.itemid = Formate.ItemID
-
-      LEFT OUTER JOIN
-      (
-          SELECT 
-              itemid,
-              SUM(ReadyForIssue) AS CurStock 
-          FROM (
-              SELECT 
-                  b.batchno,
-                  b.expdate, 
-                  b.inwno,
-                  t.facilityid, 
-                  i.itemid, 
-                  (CASE WHEN b.qastatus = '1' THEN (NVL(b.absrqty, 0) - NVL(iq.issueqty, 0)) END) AS ReadyForIssue  
-              FROM tbfacilityreceiptbatches b   
-              INNER JOIN tbfacilityreceiptitems i 
-                  ON b.facreceiptitemid = i.facreceiptitemid 
-              INNER JOIN tbfacilityreceipts t 
-                  ON t.facreceiptid = i.facreceiptid                  
-              LEFT OUTER JOIN 
-              (  
-                  SELECT  
-                      fs.facilityid,
-                      fsi.itemid,
-                      ftbo.inwno,
-                      SUM(NVL(ftbo.issueqty, 0)) AS issueqty   
-                  FROM tbfacilityissues fs 
-                  INNER JOIN tbfacilityissueitems fsi 
-                      ON fsi.issueid = fs.issueid 
-                  INNER JOIN tbfacilityoutwards ftbo 
-                      ON ftbo.issueitemid = fsi.issueitemid 
-                  WHERE fs.status = 'C'   
-                    AND fs.facilityid = :usrFacilityID             
-                  GROUP BY fsi.itemid, fs.facilityid, ftbo.inwno                     
-              ) iq 
-                  ON b.inwno = iq.inwno 
-                 AND iq.itemid = i.itemid 
-                 AND iq.facilityid = t.facilityid                 
-              WHERE t.Status = 'C'  
-                AND (b.Whissueblock = 0 OR b.Whissueblock IS NULL) 
-                AND b.expdate > SYSDATE 
-                AND t.facilityid = :usrFacilityID
           ) 
-          GROUP BY itemid  
-          HAVING SUM(ReadyForIssue) > 0
-      ) cr 
-          ON cr.itemid = Formate.ItemID
-                    
-      ORDER BY 
-          DECODE(Formate.isedl2021, 'Y', 1), 
-          DECODE(Formate.categoryname, 'DRUGS', 1, 'CONSUMABLE AND SURGICAL', 2, 'SURGICALS AND SUTURES', 3),
-          Formate.groupname,
-          Formate.itemname
-    `;
+    ) Formate
+
+    LEFT OUTER JOIN v_itemrate vr 
+        ON vr.itemid = Formate.itemid
+
+    LEFT OUTER JOIN
+    (
+        SELECT 
+            ii.itemid,
+            SUM(tbo.issueqty) AS FacIssueqty 
+        FROM tbfacilityissues i
+        INNER JOIN tbfacilityissueitems ii 
+            ON ii.issueid = i.issueid
+        INNER JOIN tbfacilityoutwards tbo 
+            ON tbo.issueitemid = ii.issueitemid
+        INNER JOIN tbfacilityreceiptbatches rb 
+            ON rb.inwno = tbo.inwno
+        WHERE 1=1 
+          AND i.status = 'C'
+          AND i.facilityid = :usrFacilityID 
+          AND i.issuedate BETWEEN (
+                SELECT startdate 
+                FROM masaccyearsettings 
+                WHERE accyrsetId = (
+                    SELECT accyrsetId 
+                    FROM masaccyearsettings 
+                    WHERE SYSDATE BETWEEN startdate AND enddate
+                )
+          ) 
+          AND (
+                SELECT enddate 
+                FROM masaccyearsettings 
+                WHERE accyrsetId = (
+                    SELECT accyrsetId 
+                    FROM masaccyearsettings 
+                    WHERE SYSDATE BETWEEN startdate AND enddate
+                )
+          )
+        GROUP BY ii.itemid
+    ) iss 
+        ON iss.itemid = Formate.ItemID
+
+    LEFT OUTER JOIN
+    (
+        SELECT 
+            itemid,
+            SUM(ReadyForIssue) AS CurStock 
+        FROM (
+            SELECT 
+                b.batchno,
+                b.expdate, 
+                b.inwno,
+                t.facilityid, 
+                i.itemid, 
+                CASE 
+                    WHEN b.qastatus = '1' 
+                    THEN (NVL(b.absrqty, 0) - NVL(iq.issueqty, 0)) 
+                END AS ReadyForIssue  
+            FROM tbfacilityreceiptbatches b   
+            INNER JOIN tbfacilityreceiptitems i 
+                ON b.facreceiptitemid = i.facreceiptitemid 
+            INNER JOIN tbfacilityreceipts t 
+                ON t.facreceiptid = i.facreceiptid                  
+            LEFT OUTER JOIN 
+            (  
+                SELECT  
+                    fs.facilityid,
+                    fsi.itemid,
+                    ftbo.inwno,
+                    SUM(NVL(ftbo.issueqty, 0)) AS issueqty   
+                FROM tbfacilityissues fs 
+                INNER JOIN tbfacilityissueitems fsi 
+                    ON fsi.issueid = fs.issueid 
+                INNER JOIN tbfacilityoutwards ftbo 
+                    ON ftbo.issueitemid = fsi.issueitemid 
+                WHERE fs.status = 'C'   
+                  AND fs.facilityid = :usrFacilityID             
+                GROUP BY 
+                    fsi.itemid, 
+                    fs.facilityid, 
+                    ftbo.inwno                     
+            ) iq 
+                ON b.inwno = iq.inwno 
+               AND iq.itemid = i.itemid 
+               AND iq.facilityid = t.facilityid                 
+            WHERE t.Status = 'C'  
+              AND (b.Whissueblock = 0 OR b.Whissueblock IS NULL) 
+              AND b.expdate > SYSDATE 
+              AND t.facilityid = :usrFacilityID
+        ) 
+        GROUP BY itemid  
+        HAVING SUM(ReadyForIssue) > 0
+    ) cr 
+        ON cr.itemid = Formate.ItemID
+
+    ORDER BY 
+        DECODE(Formate.isedl2021, 'Y', 1), 
+        DECODE(
+            Formate.categoryname, 
+            'DRUGS', 1, 
+            'CONSUMABLE AND SURGICAL', 2, 
+            'SURGICALS AND SUTURES', 3
+        ),
+        Formate.groupname,
+        Formate.itemname`;
 
     const result = await db.execute(query, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const rows = result.rows || [];
@@ -659,12 +715,13 @@ async function getDownloadAiFormatData(facilityId, categoryId, facilityTypeId) {
       edl: r.EDL || r.edl || '-',
       issuedFromWh: r.ISSUED_FROM_WH_01_APR_26_TO_31ST_OCT_26 !== undefined ? r.ISSUED_FROM_WH_01_APR_26_TO_31ST_OCT_26 : 0,
       actualConsumption: r.ACTUAL_CONSUMPTION_FROM_01_APRIL_26_TO_31ST_OCT_26 !== undefined ? r.ACTUAL_CONSUMPTION_FROM_01_APRIL_26_TO_31ST_OCT_26 : 0,
-      estimatedConsumption: r.ESTIMATED_CONSUMPTION_FOR_ONE_YEAR_FROM_01_APRIL_26_TO_31ST_MARCH_26 !== undefined ? r.ESTIMATED_CONSUMPTION_FOR_ONE_YEAR_FROM_01_APRIL_26_TO_31ST_MARCH_26 : 0,
+      estimatedConsumption: r.ESTIMATED_CONSUMPTION_FOR_ONE_YEAR_FROM_01_APRIL_26_TO_31ST_MARCH_27 !== undefined ? r.ESTIMATED_CONSUMPTION_FOR_ONE_YEAR_FROM_01_APRIL_26_TO_31ST_MARCH_27 : 0,
       currentStock: r.CURRENT_STOCK !== undefined ? r.CURRENT_STOCK : 0,
       annualIndent2728: r.ANNUAL_INDENT_27_28 !== undefined ? r.ANNUAL_INDENT_27_28 : 0,
       annualIndent2627: r.ANNUAL_INDENT_27_28 !== undefined ? r.ANNUAL_INDENT_27_28 : 0,
       rate: r.RATE !== undefined ? r.RATE : 0,
-      categoryName: r.CATEGORYNAME || r.categoryname || '-'
+      categoryName: r.CATEGORYNAME || r.categoryname || '-',
+      edlType: (String(r.EDLTYPE || r.edltype || r.EDLType || '').trim().toUpperCase() === 'YES' || String(r.EDLTYPE || r.edltype || r.EDLType || '').trim().toUpperCase() === 'Y' || String(r.EDLTYPE || r.edltype || r.EDLType || '').trim().toUpperCase() === 'EDL') ? 'EDL' : 'Non EDL'
     }));
   } catch (error) {
     console.error('Error fetching Download AI Format Data:', error);
