@@ -190,7 +190,7 @@ async function getFacilityStockItemWise(facilityId) {
     return result.rows;
 }
 
-async function getWarehouseStock(facilityId) {
+async function getWarehouseStock(facilityId, page = null, limit = 20, search = '') {
     // Fetch warehouse ID for this facility
     const whQuery = `
         select w.warehouseid 
@@ -205,7 +205,7 @@ async function getWarehouseStock(facilityId) {
     }
     const warehouseId = whResult.rows[0].WAREHOUSEID || whResult.rows[0].warehouseid;
 
-    const query = `
+    let query = `
         select WAREHOUSENAME,WAREHOUSEID,MCATEGORY,MCID,EDLTYPE,PROGRAM,PROGRAMITEMS,AISTATUS,
         ITEMNAME,ITEMCODE,STRENGTH1,UNIT,l.ITEMID,UNITCOUNT,l.edl,l.RECEIPTDATEWH,l.QCPASSEDDT
         ,READYQTY*nvl(UNITCOUNT,1) as READYQTY,NEAREXPQTY3MONTH *nvl(UNITCOUNT,1) as NEAREXPQTY3MONTH,UQQTY*nvl(UNITCOUNT,1) as UQQTY,IWHPIPQTY*nvl(UNITCOUNT,1) as IWHPIPQTY,PIPELINEQTY*nvl(UNITCOUNT,1) as PIPELINEQTY,QCPASSEDDT,RECEIPTDATEATWAREHOUSE,CGMSCFM,GROUPNAME,ITEMTYPENAME
@@ -248,8 +248,24 @@ left outer join (
         and (nvl(READYQTY,0)+nvl(UQQTY,0)+nvl(IWHPIPQTY,0) +nvl(PIPELINEQTY,0))>0
         and e.edlcat<= (select eldcat from masfacilityTypes ty inner join masfacilities f on f.facilitytypeid = ty.facilitytypeid and f.facilityid = :facilityId)
     `;
+
+    const binds = { warehouseId, facilityId };
+
+    if (search && search.trim()) {
+        query += ` and (upper(l.ITEMNAME) like upper(:search) or upper(l.ITEMCODE) like upper(:search)) `;
+        binds.search = `%${search.trim()}%`;
+    }
+
+    query += ` order by l.ITEMNAME `;
+
+    if (page !== null && page !== undefined && Number(page) > 0) {
+        const offset = (Number(page) - 1) * Number(limit);
+        query += ` offset :offset rows fetch next :limit rows only `;
+        binds.offset = offset;
+        binds.limit = Number(limit);
+    }
     
-    const result = await db.execute(query, { warehouseId, facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const result = await db.execute(query, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     return result.rows;
 }
 

@@ -34,7 +34,7 @@ async function generateIssueNumber(req, res) {
 async function generateAndSaveIssue(req, res) {
     try {
         const facilityId = parseInt(req.params.facilityId, 10);
-        const { toFacilityId, issueDate, issueType, requestBy, remarks } = req.body;
+        const { toFacilityId, issueDate, issueType, requestBy, remarks, category, issueEdl } = req.body;
 
         if (isNaN(facilityId)) {
             return res.status(400).json({ success: false, message: 'Invalid facilityId provided' });
@@ -44,13 +44,16 @@ async function generateAndSaveIssue(req, res) {
             return res.status(400).json({ success: false, message: 'Missing required fields: toFacilityId, issueDate' });
         }
 
+        const edlVal = issueEdl ? Number(issueEdl) : (category === 'EDL of higher category' ? 2 : 1);
+
         const data = {
             facilityId,
             toFacilityId,
             issueDate,
             issueType,
             requestBy,
-            remarks
+            remarks,
+            issueEdl: edlVal
         };
 
         const { issueNo, issueId } = await issueService.generateAndSaveIssue(data);

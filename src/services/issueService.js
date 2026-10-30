@@ -41,7 +41,7 @@ async function generateIssueNumber(facilityId, type = 'TR') {
 }
 
 async function generateAndSaveIssue(data) {
-    const { facilityId, toFacilityId, issueDate, issueType = 'TR', requestBy = 1, remarks = '' } = data;
+    const { facilityId, toFacilityId, issueDate, issueType = 'TR', requestBy = 1, remarks = '', issueEdl = 1 } = data;
     
     // 1. Generate Issue Number
     const issueNo = await generateIssueNumber(facilityId, 'TR');
@@ -58,7 +58,8 @@ async function generateAndSaveIssue(data) {
             TOFACILITYID,
             WRequestBy,
             ISSUETYPE,
-            Remarks
+            Remarks,
+            IssueEDL
         ) VALUES (
             :facilityId,
             :issueNo,
@@ -66,7 +67,8 @@ async function generateAndSaveIssue(data) {
             :toFacilityId,
             :requestBy,
             :issueType,
-            :remarks
+            :remarks,
+            :issueEdl
         ) RETURNING IssueID INTO :issueIdOut
     `;
 
@@ -78,6 +80,7 @@ async function generateAndSaveIssue(data) {
         requestBy,
         issueType,
         remarks,
+        issueEdl: Number(issueEdl) || 1,
         issueIdOut: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
     };
 

@@ -4,10 +4,11 @@ const logger = require('../utils/logger');
 async function getItems(req, res) {
   try {
     const { facilityId } = req.params;
+    const { inStockOnly } = req.query;
     if (!facilityId) {
       return res.status(400).json({ error: "facilityId is required" });
     }
-    const items = await facilityModel.getItems(facilityId);
+    const items = await facilityModel.getItems(facilityId, inStockOnly === 'true' || inStockOnly === true);
     res.json(items);
   } catch (error) {
     logger.error('Error in getItems controller: ' + error.message);

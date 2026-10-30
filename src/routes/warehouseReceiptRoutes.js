@@ -7,12 +7,13 @@ const { authenticate } = require('../middleware/authMiddleware');
 router.get('/indents', authenticate, warehouseReceiptController.getWarehouseIndents);
 router.post('/create', authenticate, warehouseReceiptController.createWarehouseReceipt);
 router.get('/receipts/:indentId', authenticate, warehouseReceiptController.getReceiptsByIndent);
-router.get('/fin-years', authenticate, warehouseReceiptController.getFinancialYears);
+router.get('/fin-years', warehouseReceiptController.getFinancialYears);
 router.get('/view/:receiptId', authenticate, warehouseReceiptController.getReceiptDetails);
 router.post('/view/:receiptId/items', authenticate, warehouseReceiptController.saveReceiptItem);
 router.get('/locations', authenticate, warehouseReceiptController.getStockLocations);
 router.get('/batches/:indentItemId', authenticate, warehouseReceiptController.getReceiptBatches);
 router.post('/view/:receiptId/batches', authenticate, warehouseReceiptController.addBatch);
 router.post('/complete/:receiptId', authenticate, warehouseReceiptController.completeReceipt);
+router.delete('/delete/:receiptId', authenticate, warehouseReceiptController.deleteWarehouseReceipt);
 
 module.exports = router;

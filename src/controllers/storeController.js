@@ -59,7 +59,11 @@ async function getWarehouseStock(req, res) {
         if (!facilityId) {
             return res.status(400).json({ error: "facilityId is required" });
         }
-        const data = await storeModel.getWarehouseStock(facilityId);
+        const page = req.query.page ? parseInt(req.query.page, 10) : null;
+        const limit = req.query.limit ? parseInt(req.query.limit, 10) : 20;
+        const search = req.query.search || '';
+
+        const data = await storeModel.getWarehouseStock(facilityId, page, limit, search);
         res.json(data);
     } catch (error) {
         res.status(500).json({ error: error.message });

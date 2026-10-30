@@ -549,7 +549,8 @@ exports.getIssueById = async (req, res) => {
                 IssueDate,
                 Status,
                 Remarks,
-                WRequestBy
+                WRequestBy,
+                IssueEDL
             FROM tbFacilityIssues WHERE IssueID = :id
         `;
         const issueResult = await db.execute(issueQuery, { id: Number(id) });
@@ -572,20 +573,28 @@ exports.getIssueById = async (req, res) => {
 
         // Map column names for frontend based on explicit select order
         const issue = issueResult.rows[0];
+        const rawEdl = Array.isArray(issue) ? issue[7] : (issue.ISSUEEDL !== undefined ? issue.ISSUEEDL : (issue.IssueEDL !== undefined ? issue.IssueEDL : issue.issueedl));
+        const edlNum = rawEdl !== null && rawEdl !== undefined ? Number(rawEdl) : null;
+        const categoryStr = edlNum === 2 ? 'EDL of higher category' : (edlNum === 1 ? 'EDL category' : '');
+
         const mappedIssue = Array.isArray(issue) ? {
             IssueID: issue[0],
             ToFacilityID: issue[1],
             IssueNo: issue[2],
             IssueDate: issue[3],
             Status: issue[4],
-            Remarks: issue[5] || issue[6]
+            Remarks: issue[5] || issue[6],
+            IssueEDL: edlNum,
+            Category: categoryStr
         } : {
             IssueID: issue.ISSUEID || issue.IssueID || issue.issueid,
             ToFacilityID: issue.TOFACILITYID || issue.ToFacilityID || issue.tofacilityid,
             IssueNo: issue.ISSUENO || issue.IssueNo || issue.issueno,
             IssueDate: issue.ISSUEDATE || issue.IssueDate || issue.issuedate,
             Status: issue.STATUS || issue.Status || issue.status,
-            Remarks: issue.REMARKS || issue.Remarks || issue.remarks || issue.WREQUESTBY || issue.WRequestBy || issue.wrequestby
+            Remarks: issue.REMARKS || issue.Remarks || issue.remarks || issue.WREQUESTBY || issue.WRequestBy || issue.wrequestby,
+            IssueEDL: edlNum,
+            Category: categoryStr
         };
 
         const mappedItems = (itemsResult.rows || []).map(row => {
@@ -616,7 +625,7 @@ exports.getIssueById = async (req, res) => {
 exports.updateIssueHeader = async (req, res) => {
     try {
         const { id } = req.params;
-        const { toFacilityId, issueDate, remarks } = req.body;
+        const { toFacilityId, issueDate, remarks, category, issueEdl } = req.body;
 
         if (!id) {
             return res.status(400).json({ success: false, message: 'Issue ID is required' });
@@ -625,21 +634,29 @@ exports.updateIssueHeader = async (req, res) => {
             return res.status(400).json({ success: false, message: 'To Facility and Issue Date are required' });
         }
 
+        const edlVal = issueEdl ? Number(issueEdl) : (category === 'EDL of higher category' ? 2 : (category === 'EDL category' ? 1 : null));
+
         const query = `
             UPDATE tbFacilityIssues
             SET ToFacilityID = :toFacilityId,
                 IssueDate = TO_DATE(:issueDate, 'YYYY-MM-DD'),
                 WRequestBy = :remarks,
                 Remarks = :remarks
+                ${edlVal !== null ? ', IssueEDL = :edlVal' : ''}
             WHERE IssueID = :id
         `;
 
-        await db.execute(query, {
+        const binds = {
             toFacilityId: Number(toFacilityId),
             issueDate,
             remarks: remarks || '',
             id: Number(id)
-        }, { autoCommit: true });
+        };
+        if (edlVal !== null) {
+            binds.edlVal = edlVal;
+        }
+
+        await db.execute(query, binds, { autoCommit: true });
 
         return res.status(200).json({ success: true, message: 'Issue updated successfully' });
     } catch (error) {

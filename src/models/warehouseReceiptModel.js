@@ -110,10 +110,10 @@ async function getReceiptHeader(facilityId, receiptId) {
             a.Status as "status"
         from tbFacilityReceipts a
         Inner Join tbIndents b on (b.IndentID = a.IndentID)
-        Inner Join masWarehouses m1 on (m1.WarehouseID = b.WarehouseID)
+        left outer Join masWarehouses m1 on (m1.WarehouseID = b.WarehouseID)
         left outer Join masSources m4 on (m4.SourceID = a.SourceID)
         left outer Join masSchemes m5 on (m5.SchemeID = a.SchemeID)
-        Inner Join masAccYearSettings m6 on (b.IndentDate between m6.StartDate and m6.EndDate)
+        left outer Join masAccYearSettings m6 on (COALESCE(b.IndentDate, b.RequestDate, a.FacReceiptDate) between m6.StartDate and m6.EndDate)
         where a.FacReceiptID = :receiptId AND a.FacilityID = :facilityId
     `;
     const params = { receiptId, facilityId };
@@ -145,10 +145,10 @@ async function getReceiptItems(facilityId, receiptId) {
             NVL(rc.locationno, '-') as "stockLocationName",
             NVL(m1.UNITCOUNT, 1) as "packQty",
             CASE WHEN m1.ISEDL = 1 THEN 'EDL' ELSE 'Non-EDL' END as "edlType",
-            b.BatchNo as "batchNo", 
-            TO_CHAR(b.MdgDate, 'DD-MM-YYYY') as "mfgDate", 
-            TO_CHAR(b.ExpDate, 'DD-MM-YYYY') as "expDate", 
-            NVL(b.ShortQty, 0) as "shortQty", 
+            (SELECT MAX(rfb.BatchNo) FROM tbFacilityReceiptBatches rfb WHERE rfb.FacReceiptItemID = b.FacReceiptItemID) as "batchNo", 
+            (SELECT TO_CHAR(MAX(rfb.MfgDate), 'DD-MM-YYYY') FROM tbFacilityReceiptBatches rfb WHERE rfb.FacReceiptItemID = b.FacReceiptItemID) as "mfgDate", 
+            (SELECT TO_CHAR(MAX(rfb.ExpDate), 'DD-MM-YYYY') FROM tbFacilityReceiptBatches rfb WHERE rfb.FacReceiptItemID = b.FacReceiptItemID) as "expDate", 
+            NVL((SELECT SUM(rfb.ShortQty) FROM tbFacilityReceiptBatches rfb WHERE rfb.FacReceiptItemID = b.FacReceiptItemID), 0) as "shortQty", 
             ii.indentitemid as "indentItemId",
             NVL(ii.NEEDED, 0) as "indentQty",
             (SELECT NVL(SUM(ot.ISSUEQTY), 0) FROM tbOutwards ot WHERE ot.indentitemid = ii.indentitemid) as "whIssueQty"
@@ -240,7 +240,7 @@ async function saveReceiptItem(facilityId, receiptId, payload) {
     let connection;
 
     try {
-        connection = await oracledb.getConnection();
+        connection = await db.getConnection();
 
         if (facReceiptItemId) {
             query = `
@@ -350,7 +350,7 @@ async function addBatch(facilityId, receiptId, payload) {
     let connection;
 
     try {
-        connection = await oracledb.getConnection();
+        connection = await db.getConnection();
 
         // ── Step 1: Ensure FacilityReceiptItem row exists ─────────────────────
         if (!facReceiptItemId) {
@@ -447,7 +447,7 @@ async function addBatch(facilityId, receiptId, payload) {
 async function completeFacilityReceipt(receiptId, facilityId) {
     let connection;
     try {
-        connection = await oracledb.getConnection();
+        connection = await db.getConnection();
 
         // Validation 1: At least one item exists
         let result = await connection.execute(
@@ -536,10 +536,10 @@ async function completeFacilityReceipt(receiptId, facilityId) {
 }
 
 
-async function createWarehouseReceipt(facilityId, indentId) {
+async function createWarehouseReceipt(facilityId, indentId, receiptDate) {
     let connection;
     try {
-        connection = await oracledb.getConnection();
+        connection = await db.getConnection();
 
         // 1. Check if a receipt already exists for this indent
         const checkQuery = `
@@ -593,18 +593,31 @@ async function createWarehouseReceipt(facilityId, indentId) {
         const nextSeq = (seqRes.rows && seqRes.rows.length > 0) ? (seqRes.rows[0].NEXTSEQ || '00001') : '00001';
         const facReceiptNo = `${facCode}/NO/${nextSeq}/${shAccYear}`;
 
-        // 5. Insert new receipt
-        const insertQuery = `
-            INSERT INTO tbFacilityReceipts (FacilityID, IndentID, FacReceiptNo, FacReceiptDate, Status)
-            VALUES (:facilityId, :indentId, :facReceiptNo, SYSDATE, 'I')
-            RETURNING FacReceiptID INTO :outId
-        `;
-        const insertResult = await connection.execute(insertQuery, {
+        // 5. Insert new receipt with user-selected date or SYSDATE
+        let insertQuery;
+        let insertBinds = {
             facilityId: Number(facilityId),
             indentId: Number(indentId),
             facReceiptNo,
             outId: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
-        });
+        };
+
+        if (receiptDate) {
+            insertQuery = `
+                INSERT INTO tbFacilityReceipts (FacilityID, IndentID, FacReceiptNo, FacReceiptDate, Status)
+                VALUES (:facilityId, :indentId, :facReceiptNo, TO_DATE(:receiptDate, 'YYYY-MM-DD'), 'I')
+                RETURNING FacReceiptID INTO :outId
+            `;
+            insertBinds.receiptDate = receiptDate;
+        } else {
+            insertQuery = `
+                INSERT INTO tbFacilityReceipts (FacilityID, IndentID, FacReceiptNo, FacReceiptDate, Status)
+                VALUES (:facilityId, :indentId, :facReceiptNo, SYSDATE, 'I')
+                RETURNING FacReceiptID INTO :outId
+            `;
+        }
+
+        const insertResult = await connection.execute(insertQuery, insertBinds);
 
         let newReceiptId;
         if (insertResult.outBinds && insertResult.outBinds.outId && insertResult.outBinds.outId.length > 0) {
@@ -633,6 +646,55 @@ async function createWarehouseReceipt(facilityId, indentId) {
     }
 }
 
+async function deleteWarehouseReceipt(facilityId, receiptId) {
+    let connection;
+    try {
+        connection = await db.getConnection();
+
+        // 1. Verify receipt exists and is Incomplete
+        const checkRes = await connection.execute(
+            `SELECT Status FROM tbFacilityReceipts WHERE FacReceiptID = :receiptId AND FacilityID = :facilityId`,
+            { receiptId: Number(receiptId), facilityId: Number(facilityId) },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
+
+        if (!checkRes.rows || checkRes.rows.length === 0) {
+            throw new Error('Receipt not found or not owned by this facility');
+        }
+
+        const status = checkRes.rows[0].STATUS || checkRes.rows[0].Status;
+        if (status === 'C') {
+            throw new Error('Completed receipts cannot be deleted');
+        }
+
+        // 2. Delete batches, receipt items, and receipt header
+        await connection.execute(
+            `DELETE FROM tbFacilityReceiptBatches WHERE FacReceiptItemID IN (SELECT FacReceiptItemID FROM tbFacilityReceiptItems WHERE FacReceiptID = :receiptId)`,
+            { receiptId: Number(receiptId) }
+        );
+        await connection.execute(
+            `DELETE FROM tbFacilityReceiptItems WHERE FacReceiptID = :receiptId`,
+            { receiptId: Number(receiptId) }
+        );
+        await connection.execute(
+            `DELETE FROM tbFacilityReceipts WHERE FacReceiptID = :receiptId AND FacilityID = :facilityId`,
+            { receiptId: Number(receiptId), facilityId: Number(facilityId) }
+        );
+
+        await connection.commit();
+        return { success: true, message: 'Receipt deleted successfully' };
+    } catch (err) {
+        console.error("Error executing deleteWarehouseReceipt:", err);
+        if (connection) {
+            try { await connection.rollback(); } catch (e) {}
+        }
+        throw err;
+    } finally {
+        if (connection) {
+            try { await connection.close(); } catch (e) {}
+        }
+    }
+}
 
 module.exports = {
     getWarehouseIndents,
@@ -640,10 +702,12 @@ module.exports = {
     getFinancialYears,
     getReceiptHeader,
     getReceiptItems,
-    getReceiptBatches,
     getStockLocations,
     saveReceiptItem,
+    getReceiptBatches,
     addBatch,
     completeFacilityReceipt,
-    createWarehouseReceipt
+    completeReceipt: completeFacilityReceipt,
+    createWarehouseReceipt,
+    deleteWarehouseReceipt
 };

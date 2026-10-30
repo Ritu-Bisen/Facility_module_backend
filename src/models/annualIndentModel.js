@@ -512,7 +512,7 @@ async function getDownloadAiFormatData(facilityId, categoryId, facilityTypeId) {
     }
 
     const query = `
-    SELECT 
+   SELECT 
         0 AS SlNo,
         Formate.itemcode,
         SUBSTR(Formate.itemname, 1, 100) AS itemname,
@@ -566,9 +566,9 @@ async function getDownloadAiFormatData(facilityId, categoryId, facilityTypeId) {
             CASE 
                 WHEN EDL2025 = 'Y' 
                  AND (edl2025flag = 'COMMON' OR edl2025flag = 'DHS') 
-                THEN 'EDL' 
-                ELSE 'Non EDL' 
-            END AS EDLType,
+                THEN  'EDL' 
+                ELSE case when mt.categoryid in (53,54,55) and m.isedl2021='Y' then 'EDL' else'Non EDL' 
+            END end AS EDLType,
             mc.mcid
         FROM masitems m 
         INNER JOIN masitemai ai 
@@ -1595,6 +1595,7 @@ async function getMcAiVsIssuanceReport(finYearId, categoryId, facilityId) {
 
 // Bulk Save/Insert/Update items from uploaded Excel into anualindent table
 async function uploadExcelIndentItems(facilityId, finYearId, indentId, items) {
+  let connection;
   try {
     const facId = Number(facilityId) || 22595;
     const fyId = Number(finYearId) || 547;
@@ -1604,40 +1605,99 @@ async function uploadExcelIndentItems(facilityId, finYearId, indentId, items) {
       throw new Error('Invalid Indent ID for Excel Upload');
     }
 
-    // Clean up any 0 or null quantity rows for this indent
-    await db.execute(
-      `delete from anualindent where indentid = :indId and (facilityindentqty is null or facilityindentqty <= 0)`,
-      { indId },
-      { autoCommit: true }
-    );
-
     if (!Array.isArray(items) || items.length === 0) {
       return { count: 0 };
     }
 
+    connection = await db.getConnection();
+
+    // Disable parallel DML on this session to prevent ORA-12838
+    try {
+      await connection.execute(`alter session disable parallel dml`);
+    } catch (e) {
+      // ignore if alter session is not permitted
+    }
+
+    // 1. Pre-fetch existing rows in anualindent for this indent BEFORE any delete/dml
+    const existingRes = await connection.execute(
+      `select anualindentid, itemid, upper(itemcode) as itemcode from anualindent where indentid = :indId`,
+      { indId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    const existingByItemId = new Map();
+    const existingByItemCode = new Map();
+    for (const r of (existingRes.rows || [])) {
+      const aid = r.ANUALINDENTID || r.anualindentid;
+      if (r.ITEMID || r.itemid) existingByItemId.set(Number(r.ITEMID || r.itemid), aid);
+      const ic = String(r.ITEMCODE || r.itemcode || '').trim().toUpperCase();
+      if (ic) existingByItemCode.set(ic, aid);
+    }
+
+    // 2. Pre-fetch all masitems with single query
+    const masRes = await connection.execute(
+      `select upper(itemcode) as code, itemid, nvl(unitcount, 1) as unitcount from masitems`,
+      {},
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    const masMap = new Map();
+    for (const r of (masRes.rows || [])) {
+      const code = String(r.CODE || r.code || '').trim().toUpperCase();
+      if (code) {
+        masMap.set(code, {
+          itemId: Number(r.ITEMID || r.itemid),
+          unitCount: Number(r.UNITCOUNT || r.unitcount || 1)
+        });
+      }
+    }
+
+    // 3. Get current max anualindentid once BEFORE any delete/dml
+    const idRes = await connection.execute(
+      `select nvl(max(anualindentid), 0) as maxid from anualindent`,
+      {},
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    let nextId = Number(idRes.rows && idRes.rows[0] ? (idRes.rows[0].MAXID || idRes.rows[0].maxid || 0) : 0) + 1;
+
+    // 4. Clean up any 0 or null quantity rows for this indent and COMMIT immediately so table is not modified in parallel
+    await connection.execute(
+      `delete from anualindent where indentid = :indId and (facilityindentqty is null or facilityindentqty <= 0)`,
+      { indId }
+    );
+    await connection.commit();
+
     let updatedCount = 0;
+    const updateQuery = `
+      update anualindent 
+      set facilityindentqty = :qty,
+          consumption = :cons,
+          actualconsumption = :actCons,
+          projectedconsumption = :projCons,
+          currentstock = :stock,
+          rate = :rate
+      where anualindentid = :anualIndentId
+    `;
+
+    const insertQuery = `
+      insert into anualindent 
+      (anualindentid, indentid, facilityid, itemid, itemcode, accyrsetid, facilityindentqty, consumption, actualconsumption, projectedconsumption, currentstock, rate, status, entrydate)
+      values
+      (:nextId, :indId, :facId, :itemId, :code, :fyId, :qty, :cons, :actCons, :projCons, :stock, :rate, 'I', sysdate)
+    `;
+
     for (const item of items) {
       const code = String(item.itemCode || '').trim();
       if (!code) continue;
 
       const rawQty = Number(item.facilityIndentQty) || 0;
-      if (rawQty <= 0) {
-        // IGNORE items with Annual Indent Qty <= 0
-        continue;
-      }
+      if (rawQty <= 0) continue;
 
-      const itemQuery = `
-        select m.itemid, nvl(m.unitcount, 1) unitcount, nvl(vr.singlerate, 0) rate 
-        from masitems m 
-        left outer join v_itemrate vr on vr.itemid = m.itemid 
-        where upper(m.itemcode) = upper(:code) and rownum = 1
-      `;
-      const itemRes = await db.execute(itemQuery, { code }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-      if (!itemRes.rows || itemRes.rows.length === 0) continue;
+      const upperCode = code.toUpperCase();
+      const masItem = masMap.get(upperCode);
+      if (!masItem) continue;
 
-      const itemId = itemRes.rows[0].ITEMID || itemRes.rows[0].itemid;
-      const unitCount = Number(itemRes.rows[0].UNITCOUNT || itemRes.rows[0].unitcount || 1);
-      const rate = Number(item.rate) > 0 ? Number(item.rate) : Number(itemRes.rows[0].RATE || itemRes.rows[0].rate || 0);
+      const itemId = masItem.itemId;
+      const unitCount = masItem.unitCount;
+      const rate = Number(item.rate) || 0;
       const cons = Number(item.consumption) || 0;
       const actCons = Number(item.actualConsumption) || 0;
       const projCons = Number(item.projectedConsumption) || 0;
@@ -1650,47 +1710,31 @@ async function uploadExcelIndentItems(facilityId, finYearId, indentId, items) {
         qty = skuIndent > 0 ? skuIndent * unitCount : rawQty;
       }
 
-      const checkQuery = `
-        select anualindentid 
-        from anualindent 
-        where indentid = :indId and itemid = :itemId
-      `;
-      const checkRes = await db.execute(checkQuery, { indId, itemId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-
-      if (checkRes.rows && checkRes.rows.length > 0) {
-        const anualIndentId = checkRes.rows[0].ANUALINDENTID || checkRes.rows[0].anualIndentId;
-        const updateQuery = `
-          update anualindent 
-          set facilityindentqty = :qty,
-              consumption = :cons,
-              actualconsumption = :actCons,
-              projectedconsumption = :projCons,
-              currentstock = :stock,
-              rate = :rate
-          where anualindentid = :anualIndentId
-        `;
-        await db.execute(updateQuery, { qty, cons, actCons, projCons, stock, rate, anualIndentId }, { autoCommit: true });
+      const existingId = existingByItemId.get(itemId) || existingByItemCode.get(upperCode);
+      if (existingId) {
+        await connection.execute(updateQuery, { qty, cons, actCons, projCons, stock, rate, anualIndentId: existingId });
         updatedCount++;
       } else {
-        const idQuery = `select nvl(max(anualindentid), 0) + 1 as nextid from anualindent`;
-        const idRes = await db.execute(idQuery, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-        const nextId = idRes.rows && idRes.rows[0] ? (idRes.rows[0].NEXTID || idRes.rows[0].nextid || 1) : 1;
-
-        const insertQuery = `
-          insert into anualindent 
-          (anualindentid, indentid, facilityid, itemid, itemcode, accyrsetid, facilityindentqty, consumption, actualconsumption, projectedconsumption, currentstock, rate, status, entrydate)
-          values
-          (:nextId, :indId, :facId, :itemId, :code, :fyId, :qty, :cons, :actCons, :projCons, :stock, :rate, 'I', sysdate)
-        `;
-        await db.execute(insertQuery, { nextId, indId, facId, itemId, code, fyId, qty, cons, actCons, projCons, stock, rate }, { autoCommit: true });
+        const currentId = nextId++;
+        await connection.execute(insertQuery, { nextId: currentId, indId, facId, itemId, code, fyId, qty, cons, actCons, projCons, stock, rate });
+        existingByItemId.set(itemId, currentId);
+        existingByItemCode.set(upperCode, currentId);
         updatedCount++;
       }
     }
 
+    await connection.commit();
     return { count: updatedCount };
   } catch (error) {
+    if (connection) {
+      try { await connection.rollback(); } catch (e) {}
+    }
     console.error('Error in uploadExcelIndentItems:', error);
     throw error;
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (e) {}
+    }
   }
 }
 
@@ -1970,6 +2014,7 @@ async function getReagentCreateIndentItems(facilityId, finYearId, indentId) {
 
 // Upload Excel Reagent Indent Items (btnupload_Click in REAGENTAnualItemIndent.aspx.cs)
 async function uploadExcelReagentIndentItems(facilityId, finYearId, indentId, rows) {
+  let connection;
   try {
     const facId = Number(facilityId) || 22595;
     const fyId = Number(finYearId) || 547;
@@ -1979,7 +2024,69 @@ async function uploadExcelReagentIndentItems(facilityId, finYearId, indentId, ro
       throw new Error('Please Generate Indent Number First then Upload File.');
     }
 
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return { count: 0 };
+    }
+
+    connection = await db.getConnection();
+
+    // Disable parallel DML on this session to prevent ORA-12838
+    try {
+      await connection.execute(`alter session disable parallel dml`);
+    } catch (e) {
+      // ignore
+    }
+
+    // 1. Pre-fetch existing rows in anualindent for this indent
+    const existingRes = await connection.execute(
+      `select anualindentid, itemid, upper(itemcode) as itemcode from anualindent where indentid = :indId and facilityid = :facId and accyrsetid = :fyId`,
+      { indId, facId, fyId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    const existingByItemId = new Map();
+    const existingByItemCode = new Map();
+    for (const r of (existingRes.rows || [])) {
+      const aid = r.ANUALINDENTID || r.anualindentid;
+      if (r.ITEMID || r.itemid) existingByItemId.set(Number(r.ITEMID || r.itemid), aid);
+      const ic = String(r.ITEMCODE || r.itemcode || '').trim().toUpperCase();
+      if (ic) existingByItemCode.set(ic, aid);
+    }
+
+    // 2. Pre-fetch all masitems
+    const masRes = await connection.execute(
+      `select upper(itemcode) as code, itemid from masitems`,
+      {},
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    const masMap = new Map();
+    for (const r of (masRes.rows || [])) {
+      const code = String(r.CODE || r.code || '').trim().toUpperCase();
+      if (code) {
+        masMap.set(code, Number(r.ITEMID || r.itemid));
+      }
+    }
+
+    // 3. Pre-fetch max(anualindentid)
+    const idRes = await connection.execute(
+      `select nvl(max(anualindentid), 0) as maxid from anualindent`,
+      {},
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    let nextId = Number(idRes.rows && idRes.rows[0] ? (idRes.rows[0].MAXID || idRes.rows[0].maxid || 0) : 0) + 1;
+
     let insertedCount = 0;
+    const insertQuery = `
+      insert into anualindent
+      (anualindentid, indentid, facilityid, itemid, itemcode, accyrsetid, consumption, currentstock, facilityindentqty, status, Rate, entrydate)
+      values
+      (:nextId, :indId, :facId, :itemId, :code, :fyId, :cons, :stock, :qty, 'I', :rate, sysdate)
+    `;
+    const updateQuery = `
+      update anualindent
+      set consumption = :cons, currentstock = :stock, facilityindentqty = :qty, rate = :rate
+      where anualindentid = :anualIndentId
+    `;
+
     for (const r of rows) {
       const code = String(r.itemcode || r.itemCode || '').trim();
       if (!code) continue;
@@ -2000,44 +2107,35 @@ async function uploadExcelReagentIndentItems(facilityId, finYearId, indentId, ro
       const cons = Number(rawCons) || 0;
       const stock = Number(r.currentStock !== undefined ? r.currentStock : (r.Current_Stock || 0));
 
-      const itemRes = await db.execute(`select itemid from masitems where itemcode = :code`, { code }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-      if (!itemRes.rows || itemRes.rows.length === 0) continue;
-      const itemId = itemRes.rows[0].ITEMID || itemRes.rows[0].itemid;
+      const upperCode = code.toUpperCase();
+      const itemId = masMap.get(upperCode);
+      if (!itemId) continue;
 
-      const dupRes = await db.execute(
-        `select count(itemcode) as cnt from anualindent where indentid = :indId and facilityid = :facId and accyrsetid = :fyId and itemcode = :code`,
-        { indId, facId, fyId, code },
-        { outFormat: oracledb.OUT_FORMAT_OBJECT }
-      );
-      const isDup = Number(dupRes.rows[0].CNT || dupRes.rows[0].cnt || 0) > 0;
-
-      if (!isDup) {
-        const idRes = await db.execute(`select nvl(max(anualindentid), 0) + 1 as nextid from anualindent`, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-        const nextId = idRes.rows && idRes.rows[0] ? (idRes.rows[0].NEXTID || idRes.rows[0].nextid || 1) : 1;
-
-        const insertQuery = `
-          insert into anualindent
-          (anualindentid, indentid, facilityid, itemid, itemcode, accyrsetid, consumption, currentstock, facilityindentqty, status, Rate, entrydate)
-          values
-          (:nextId, :indId, :facId, :itemId, :code, :fyId, :cons, :stock, :qty, 'I', :rate, sysdate)
-        `;
-        await db.execute(insertQuery, { nextId, indId, facId, itemId, code, fyId, cons, stock, qty, rate }, { autoCommit: true });
+      const existingId = existingByItemId.get(itemId) || existingByItemCode.get(upperCode);
+      if (existingId) {
+        await connection.execute(updateQuery, { cons, stock, qty, rate, anualIndentId: existingId });
         insertedCount++;
       } else {
-        const updateQuery = `
-          update anualindent
-          set consumption = :cons, currentstock = :stock, facilityindentqty = :qty, rate = :rate
-          where indentid = :indId and facilityid = :facId and accyrsetid = :fyId and itemcode = :code
-        `;
-        await db.execute(updateQuery, { cons, stock, qty, rate, indId, facId, fyId, code }, { autoCommit: true });
+        const currentId = nextId++;
+        await connection.execute(insertQuery, { nextId: currentId, indId, facId, itemId, code, fyId, cons, stock, qty, rate });
+        existingByItemId.set(itemId, currentId);
+        existingByItemCode.set(upperCode, currentId);
         insertedCount++;
       }
     }
 
+    await connection.commit();
     return { count: insertedCount };
   } catch (error) {
+    if (connection) {
+      try { await connection.rollback(); } catch (e) {}
+    }
     console.error('Error in uploadExcelReagentIndentItems:', error);
     throw error;
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (e) {}
+    }
   }
 }
 
@@ -2287,6 +2385,7 @@ async function getNonEdlCreateIndentItems(facilityId, finYearId, indentId) {
 
 // Upload Excel Non-EDL Indent Items (btnupload_Click in NONEDLAnualItemIndent.aspx.cs)
 async function uploadExcelNonEdlIndentItems(facilityId, finYearId, indentId, rows) {
+  let connection;
   try {
     const facId = Number(facilityId) || 22595;
     const fyId = Number(finYearId) || 547;
@@ -2296,7 +2395,76 @@ async function uploadExcelNonEdlIndentItems(facilityId, finYearId, indentId, row
       throw new Error('Please Generate Indent Number First then Upload File.');
     }
 
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return { count: 0 };
+    }
+
+    connection = await db.getConnection();
+
+    // Disable parallel DML on this session to prevent ORA-12838
+    try {
+      await connection.execute(`alter session disable parallel dml`);
+    } catch (e) {
+      // ignore
+    }
+
+    // 1. Pre-fetch valid Non-EDL items from masItems
+    const masRes = await connection.execute(
+      `select upper(itemcode) as code, itemid, nvl(unitcount, 1) as unitcount 
+       from masItems 
+       where ISFREEZ_ITPR is null 
+         and (nvl(EDL2025FLAG,'N')='N' or EDL2025FLAG='DHS')
+         and categoryid not in (62,59,61,58,60)`,
+      {},
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    const masMap = new Map();
+    for (const r of (masRes.rows || [])) {
+      const code = String(r.CODE || r.code || '').trim().toUpperCase();
+      if (code) {
+        masMap.set(code, {
+          itemId: Number(r.ITEMID || r.itemid),
+          unitCount: Number(r.UNITCOUNT || r.unitcount || 1)
+        });
+      }
+    }
+
+    // 2. Pre-fetch existing rows in anualindent for this indent
+    const existingRes = await connection.execute(
+      `select anualindentid, itemid, upper(itemcode) as itemcode from anualindent where indentid = :indId and facilityid = :facId and accyrsetid = :fyId`,
+      { indId, facId, fyId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    const existingByItemId = new Map();
+    const existingByItemCode = new Map();
+    for (const r of (existingRes.rows || [])) {
+      const aid = r.ANUALINDENTID || r.anualindentid;
+      if (r.ITEMID || r.itemid) existingByItemId.set(Number(r.ITEMID || r.itemid), aid);
+      const ic = String(r.ITEMCODE || r.itemcode || '').trim().toUpperCase();
+      if (ic) existingByItemCode.set(ic, aid);
+    }
+
+    // 3. Pre-fetch max(anualindentid)
+    const idRes = await connection.execute(
+      `select nvl(max(anualindentid), 0) as maxid from anualindent`,
+      {},
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    let nextId = Number(idRes.rows && idRes.rows[0] ? (idRes.rows[0].MAXID || idRes.rows[0].maxid || 0) : 0) + 1;
+
     let insertedCount = 0;
+    const insertQuery = `
+      insert into anualindent
+      (anualindentid, indentid, facilityid, itemid, itemcode, accyrsetid, consumption, currentstock, facilityindentqty, status, Rate, entrydate)
+      values
+      (:nextId, :indId, :facId, :itemId, :code, :fyId, :cons, :stock, :finQty, 'I', :rate, sysdate)
+    `;
+    const updateQuery = `
+      update anualindent
+      set consumption = :cons, currentstock = :stock, facilityindentqty = :finQty, rate = :rate
+      where anualindentid = :anualIndentId
+    `;
+
     for (const r of rows) {
       const code = String(r.itemcode || r.itemCode || '').trim();
       if (!code) continue;
@@ -2317,23 +2485,12 @@ async function uploadExcelNonEdlIndentItems(facilityId, finYearId, indentId, row
       const cons = Number(rawCons) || 0;
       const stock = Number(r.currentStock !== undefined ? r.currentStock : (r.Current_Stock || 0));
 
-      // getItemID(drugcode)
-      const itemRes = await db.execute(
-        `Select ItemID, nvl(unitcount, 1) as unitcount from masItems where ISFREEZ_ITPR is null and (nvl(EDL2025FLAG,'N')='N' or EDL2025FLAG='DHS') and itemcode = :code`,
-        { code },
-        { outFormat: oracledb.OUT_FORMAT_OBJECT }
-      );
-      if (!itemRes.rows || itemRes.rows.length === 0) continue;
-      const itemId = itemRes.rows[0].ITEMID || itemRes.rows[0].itemid;
-      const unitCount = Number(itemRes.rows[0].UNITCOUNT || itemRes.rows[0].unitcount || 1);
+      const upperCode = code.toUpperCase();
+      const masItem = masMap.get(upperCode);
+      if (!masItem) continue;
 
-      // ItemExist(drugcode)
-      const existRes = await db.execute(
-        `Select ItemID from masItems where categoryid not in (62,59,61,58,60) and itemcode = :code`,
-        { code },
-        { outFormat: oracledb.OUT_FORMAT_OBJECT }
-      );
-      if (!existRes.rows || existRes.rows.length === 0) continue;
+      const itemId = masItem.itemId;
+      const unitCount = masItem.unitCount;
 
       // SKU packaging calculation:
       let finQty = qty;
@@ -2342,40 +2499,31 @@ async function uploadExcelNonEdlIndentItems(facilityId, finYearId, indentId, row
         finQty = skuIndent > 0 ? skuIndent * unitCount : qty;
       }
 
-      const dupRes = await db.execute(
-        `select count(itemcode) as cnt from anualindent where indentid = :indId and facilityid = :facId and accyrsetid = :fyId and itemcode = :code`,
-        { indId, facId, fyId, code },
-        { outFormat: oracledb.OUT_FORMAT_OBJECT }
-      );
-      const isDup = Number(dupRes.rows[0].CNT || dupRes.rows[0].cnt || 0) > 0;
-
-      if (!isDup) {
-        const idRes = await db.execute(`select nvl(max(anualindentid), 0) + 1 as nextid from anualindent`, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-        const nextId = idRes.rows && idRes.rows[0] ? (idRes.rows[0].NEXTID || idRes.rows[0].nextid || 1) : 1;
-
-        const insertQuery = `
-          insert into anualindent
-          (anualindentid, indentid, facilityid, itemid, itemcode, accyrsetid, consumption, currentstock, facilityindentqty, status, Rate, entrydate)
-          values
-          (:nextId, :indId, :facId, :itemId, :code, :fyId, :cons, :stock, :finQty, 'I', :rate, sysdate)
-        `;
-        await db.execute(insertQuery, { nextId, indId, facId, itemId, code, fyId, cons, stock, finQty, rate }, { autoCommit: true });
+      const existingId = existingByItemId.get(itemId) || existingByItemCode.get(upperCode);
+      if (existingId) {
+        await connection.execute(updateQuery, { cons, stock, finQty, rate, anualIndentId: existingId });
         insertedCount++;
       } else {
-        const updateQuery = `
-          update anualindent
-          set consumption = :cons, currentstock = :stock, facilityindentqty = :finQty, rate = :rate
-          where indentid = :indId and facilityid = :facId and accyrsetid = :fyId and itemcode = :code
-        `;
-        await db.execute(updateQuery, { cons, stock, finQty, rate, indId, facId, fyId, code }, { autoCommit: true });
+        const currentId = nextId++;
+        await connection.execute(insertQuery, { nextId: currentId, indId, facId, itemId, code, fyId, cons, stock, finQty, rate });
+        existingByItemId.set(itemId, currentId);
+        existingByItemCode.set(upperCode, currentId);
         insertedCount++;
       }
     }
 
+    await connection.commit();
     return { count: insertedCount };
   } catch (error) {
+    if (connection) {
+      try { await connection.rollback(); } catch (e) {}
+    }
     console.error('Error in uploadExcelNonEdlIndentItems:', error);
     throw error;
+  } finally {
+    if (connection) {
+      try { await connection.close(); } catch (e) {}
+    }
   }
 }
 

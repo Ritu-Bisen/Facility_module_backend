@@ -122,8 +122,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '200kb' }));
-app.use(express.urlencoded({ limit: '200kb', extended: true }));
+// No body size limit for large Excel and file uploads
+app.use(express.json({ limit: '1gb' }));
+app.use(express.urlencoded({ limit: '1gb', extended: true }));
 
 const sanitizeMiddleware = require('./middleware/sanitizeMiddleware');
 app.use(sanitizeMiddleware);

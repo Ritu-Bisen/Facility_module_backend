@@ -313,7 +313,7 @@ async function uploadExcelIndentItems(req, res) {
     res.json({ success: true, message: 'Excel items uploaded successfully', data });
   } catch (error) {
     console.error('Error in uploadExcelIndentItems:', error);
-    res.status(500).json({ success: false, error: 'Internal Server Error' });
+    res.status(500).json({ success: false, error: error.message || 'Internal Server Error' });
   }
 }
 

@@ -205,19 +205,7 @@ async function getFreezRcDetails(req, res) {
 }
 
 // In-memory store for Reagent Warehouse Indents (matching database masAnualIndent table)
-let mockWarehouseIndents = [
-  {
-    NOCID: 33939,
-    NOCNumber: '23558/RG00001/26-27',
-    NOCDATE: '01-01-2026',
-    Status: 'Completed',
-    StatusCode: 'C',
-    AccYear: '2026-2027',
-    AUTO_AICODE: '00001',
-    EQPFileName: 'Indent_Letter_23558_RG00001.pdf',
-    EQPFilePath: '/downloads/indent_letter_1.pdf'
-  }
-];
+let mockWarehouseIndents = [];
 
 /**
  * GET /api/reagent-indent/fin-years
@@ -992,7 +980,8 @@ async function getReagentItems(req, res) {
       nvl(ind.facilityindentqty,0) as facilityindentqty, nvl(ind.ANUALINDENTID,0) as ANUALINDENTID,
       nvl(vr.singlerate,0) as Rateold, case when ind.iRate is null or ind.iRate=0 then nvl(vr.singlerate,0) else ind.iRate end as Rate,
       round((case when ind.iRate is null or ind.iRate=0 then nvl(vr.singlerate,0) else ind.iRate end ) * nvl(ind.facilityindentqty,0), 2) as Indvalue,
-      case when rc.RCItemid is not null then 'RC Valid' else 'Not Valid' end as RCStatus, rc.RCRate, to_char(to_date(rc.RCvalidityDate,'dd-MM-yyyy'),'dd-MM-yyyy') RCvalidityDate
+      case when rc.RCItemid is not null then 'RC Valid' else 'Not Valid' end as RCStatus, rc.RCRate,
+      nvl(to_char(rc.RCvalidityDate, 'dd-mm-yyyy'), '31-03-2027') as RCvalidityDate
       from masitems m
       left outer join v_itemrate vr on vr.itemid=m.itemid
       inner join masreagentmakemodel mm on mm.mmid = m.mmid
@@ -1010,8 +999,9 @@ async function getReagentItems(req, res) {
     try {
       const result = await db.execute(query, { indentId: String(indentId), facilityId, accYrSetId: accYrSetId || 547 }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
       rows = (result.rows || []).map(r => ({
+        AIEQPID: r.AIEQPID || r.aieqpid,
         ANUALINDENTID: r.ANUALINDENTID || r.anualindentid,
-        eqpId: r.PMACHINEID || r.pmachineid || 'EQP-101',
+        eqpId: r.PMACHINEID || r.pmachineid || '',
         eqpName: r.EQPNAME || r.eqpname,
         make: r.MAKE || r.make,
         model: r.MODEL || r.model,
@@ -1027,122 +1017,16 @@ async function getReagentItems(req, res) {
       }));
     } catch (err) {
       console.warn('DB query for reagent items failed:', err.message);
+      rows = [];
     }
 
-    if (!rows || rows.length === 0) {
-      const fallbackList = [
-        {
-          ANUALINDENTID: 501,
-          eqpId: 'EQP-101',
-          eqpName: 'Abbott CELL-DYN Ruby Hematology Analyzer',
-          make: 'Abbott',
-          model: 'CELL-DYN Ruby',
-          itemCode: 'REG-1001',
-          itemId: 9001,
-          itemName: 'Diluent / Sheath Fluid (Pack of 20L)',
-          unit: 'Pack',
-          rate: 4500,
-          facilityindentqty: 10,
-          Indvalue: 45000,
-          RCStatus: 'RC Valid',
-          RCvalidityDate: '31-03-2027'
-        },
-        {
-          ANUALINDENTID: 502,
-          eqpId: 'EQP-101',
-          eqpName: 'Abbott CELL-DYN Ruby Hematology Analyzer',
-          make: 'Abbott',
-          model: 'CELL-DYN Ruby',
-          itemCode: 'REG-1002',
-          itemId: 9002,
-          itemName: 'Lyse Reagent (Pack of 5L)',
-          unit: 'Pack',
-          rate: 6200,
-          facilityindentqty: 5,
-          Indvalue: 31000,
-          RCStatus: 'RC Valid',
-          RCvalidityDate: '31-03-2027'
-        },
-        {
-          ANUALINDENTID: 503,
-          eqpId: 'EQP-102',
-          eqpName: 'Roche Cobas c311 Clinical Chemistry Analyzer',
-          make: 'Roche',
-          model: 'Cobas c311',
-          itemCode: 'REG-2001',
-          itemId: 9003,
-          itemName: 'Glucose HK Reagent (Pack 400 Tests)',
-          unit: 'Kit',
-          rate: 3200,
-          facilityindentqty: 15,
-          Indvalue: 48000,
-          RCStatus: 'RC Valid',
-          RCvalidityDate: '31-03-2027'
-        },
-        {
-          ANUALINDENTID: 504,
-          eqpId: 'EQP-102',
-          eqpName: 'Roche Cobas c311 Clinical Chemistry Analyzer',
-          make: 'Roche',
-          model: 'Cobas c311',
-          itemCode: 'REG-2002',
-          itemId: 9004,
-          itemName: 'Urea / BUN Reagent (Pack 300 Tests)',
-          unit: 'Kit',
-          rate: 4100,
-          facilityindentqty: 8,
-          Indvalue: 32800,
-          RCStatus: 'RC Valid',
-          RCvalidityDate: '31-03-2027'
-        },
-        {
-          ANUALINDENTID: 505,
-          eqpId: 'EQP-103',
-          eqpName: 'Beckman Coulter Access 2 Immunoassay System',
-          make: 'Beckman Coulter',
-          model: 'Access 2',
-          itemCode: 'REG-3001',
-          itemId: 9005,
-          itemName: 'TSH Assay Reagent Kit (Pack 100 Tests)',
-          unit: 'Kit',
-          rate: 12500,
-          facilityindentqty: 4,
-          Indvalue: 50000,
-          RCStatus: 'RC Valid',
-          RCvalidityDate: '31-03-2027'
-        },
-        {
-          ANUALINDENTID: 506,
-          eqpId: 'EQP-104',
-          eqpName: 'Sysmex XN-1000 Hematology System',
-          make: 'Sysmex',
-          model: 'XN-1000',
-          itemCode: 'REG-4001',
-          itemId: 9006,
-          itemName: 'CELLPACK DCL Reagent (Pack 20L)',
-          unit: 'Pack',
-          rate: 5400,
-          facilityindentqty: 6,
-          Indvalue: 32400,
-          RCStatus: 'RC Valid',
-          RCvalidityDate: '31-03-2027'
-        }
-      ];
-
-      if (pmachineId && pmachineId !== '0') {
-        rows = fallbackList.filter(item => item.eqpId === pmachineId);
-      } else {
-        rows = fallbackList;
-      }
-    }
-
-    // Summary calculation (matching FillAIValue)
-    const validItems = rows.filter(i => i.facilityindentqty > 0);
+    // Summary calculation (matching FillAIValue): only count items with actual entered indent quantity > 0
+    const validItems = rows.filter(i => Number(i.facilityindentqty) > 0);
     const cntIte = validItems.length;
-    const totalValINR = validItems.reduce((acc, curr) => acc + curr.Indvalue, 0);
+    const totalValINR = validItems.reduce((acc, curr) => acc + Number(curr.Indvalue || 0), 0);
     const indValCr = (totalValINR / 10000000).toFixed(4);
 
-    res.json({
+    return res.json({
       success: true,
       data: rows,
       summary: {
