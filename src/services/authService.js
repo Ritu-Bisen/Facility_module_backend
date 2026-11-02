@@ -10,6 +10,7 @@ const { generateTokens, generateTempMfaToken } = require('../utils/jwtHelper');
  */
 function buildTokenPayload(user, sessionId) {
   const facTypeId = user.FACILITYTYPEID || user.facilityTypeId || user.facilitytypeid || null;
+  const distId = user.DISTRICTID !== undefined && user.DISTRICTID !== null ? Number(user.DISTRICTID) : (user.districtId ?? user.districtid ?? null);
   return {
     userId: user.USERID,
     emailId: user.EMAILID,
@@ -18,6 +19,8 @@ function buildTokenPayload(user, sessionId) {
     facilityId: user.FACILITYID,
     facilityTypeId: facTypeId,
     facilitytypeid: facTypeId,
+    districtId: distId,
+    districtid: distId,
     facilityTypeCode: user.FACILITYTYPECODE,
     facilityType: user.FACILITYTYPECODE || (facTypeId ? String(facTypeId) : null),
     facilityTypeName: user.FACILITYTYPENAME,
@@ -200,17 +203,20 @@ async function loginWithEmail(email, passwordOrOtp) {
     // Non-fatal
   }
 
-  // Ensure facilityTypeId and hodId are retrieved from MASFACILITIES matching facilityId
+  // Ensure facilityTypeId, hodId, and districtId are retrieved from MASFACILITIES matching facilityId
   let facTypeId = user.FACILITYTYPEID;
   let hodId = user.HODID !== undefined && user.HODID !== null ? Number(user.HODID) : null;
-  if ((!facTypeId || hodId === null) && user.FACILITYID) {
+  let districtId = user.DISTRICTID !== undefined && user.DISTRICTID !== null ? Number(user.DISTRICTID) : null;
+  if (user.FACILITYID) {
     try {
       const details = await authModel.getFacilityDetails(user.FACILITYID);
       if (details) {
         if (!facTypeId) facTypeId = details.facilityTypeId;
         if (hodId === null) hodId = details.hodId;
+        if (details.districtId !== null && details.districtId !== undefined) districtId = details.districtId;
         user.FACILITYTYPEID = facTypeId;
         user.HODID = hodId;
+        user.DISTRICTID = districtId;
         user.FACILITYTYPECODE = details.facilityTypeCode || user.FACILITYTYPECODE;
         user.FACILITYTYPENAME = details.facilityTypeName || user.FACILITYTYPENAME;
       }
@@ -237,6 +243,8 @@ async function loginWithEmail(email, passwordOrOtp) {
       facilitytypeid: facTypeId || null,
       hodId: hodId,
       hodid: hodId,
+      districtId: districtId,
+      districtid: districtId,
       facilityTypeCode: user.FACILITYTYPECODE || null,
       facilityType: user.FACILITYTYPECODE || (facTypeId ? String(facTypeId) : null),
       facilityTypeName: user.FACILITYTYPENAME || null,
@@ -340,15 +348,19 @@ async function loginWithPhone(phoneNo, passwordOrOtp) {
   const sessionId = crypto.randomUUID();
   await authModel.updateSessionId(user.USERID, sessionId);
 
-  // Ensure facilityTypeId and hodId are retrieved from MASFACILITIES matching facilityId
+  // Ensure facilityTypeId, hodId, and districtId are retrieved from MASFACILITIES matching facilityId
   let facTypeId = user.FACILITYTYPEID;
   let hodId = user.HODID ?? null;
+  let districtId = user.DISTRICTID !== undefined && user.DISTRICTID !== null ? Number(user.DISTRICTID) : null;
   if (user.FACILITYID) {
     const facDetails = await authModel.getFacilityDetails(user.FACILITYID);
     if (facDetails) {
       facTypeId = facDetails.facilityTypeId || facTypeId;
       hodId = facDetails.hodId ?? hodId;
+      if (facDetails.districtId !== null && facDetails.districtId !== undefined) districtId = facDetails.districtId;
       user.FACILITYTYPEID = facTypeId;
+      user.HODID = hodId;
+      user.DISTRICTID = districtId;
       user.FACILITYTYPECODE = facDetails.facilityTypeCode || user.FACILITYTYPECODE;
       user.FACILITYTYPENAME = facDetails.facilityTypeName || user.FACILITYTYPENAME;
     }
@@ -372,6 +384,8 @@ async function loginWithPhone(phoneNo, passwordOrOtp) {
       facilitytypeid: facTypeId || null,
       hodId: hodId,
       hodid: hodId,
+      districtId: districtId,
+      districtid: districtId,
       facilityTypeCode: user.FACILITYTYPECODE || null,
       facilityType: user.FACILITYTYPECODE || (facTypeId ? String(facTypeId) : null),
       facilityTypeName: user.FACILITYTYPENAME || null,
@@ -484,15 +498,19 @@ async function verifyMfa(userId, otp) {
   const sessionId = crypto.randomUUID();
   await authModel.updateSessionId(user.USERID, sessionId);
 
-  // Ensure facilityTypeId and hodId are retrieved from MASFACILITIES matching facilityId
+  // Ensure facilityTypeId, hodId, and districtId are retrieved from MASFACILITIES matching facilityId
   let facTypeId = user.FACILITYTYPEID;
   let hodId = user.HODID ?? null;
+  let districtId = user.DISTRICTID !== undefined && user.DISTRICTID !== null ? Number(user.DISTRICTID) : null;
   if (user.FACILITYID) {
     const facDetails = await authModel.getFacilityDetails(user.FACILITYID);
     if (facDetails) {
       facTypeId = facDetails.facilityTypeId || facTypeId;
       hodId = facDetails.hodId ?? hodId;
+      if (facDetails.districtId !== null && facDetails.districtId !== undefined) districtId = facDetails.districtId;
       user.FACILITYTYPEID = facTypeId;
+      user.HODID = hodId;
+      user.DISTRICTID = districtId;
       user.FACILITYTYPECODE = facDetails.facilityTypeCode || user.FACILITYTYPECODE;
       user.FACILITYTYPENAME = facDetails.facilityTypeName || user.FACILITYTYPENAME;
     }
@@ -516,6 +534,8 @@ async function verifyMfa(userId, otp) {
       facilitytypeid: facTypeId || null,
       hodId: hodId,
       hodid: hodId,
+      districtId: districtId,
+      districtid: districtId,
       facilityTypeCode: user.FACILITYTYPECODE || null,
       facilityType: user.FACILITYTYPECODE || (facTypeId ? String(facTypeId) : null),
       facilityTypeName: user.FACILITYTYPENAME || null,

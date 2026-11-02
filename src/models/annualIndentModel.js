@@ -1138,11 +1138,44 @@ async function getCreateIndentHeader(facilityId, finYearId, indentId) {
                ) categoryname 
         from masAnualIndent a
         left outer join masitemcategories mc on mc.categoryid = a.AIcategoryid
-        where a.indentid = :indId and a.facilityid = :facId
+        where a.indentid = :indId
       `;
-      const result = await db.execute(query, { indId, facId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      const result = await db.execute(query, { indId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
       if (result.rows && result.rows.length > 0) {
         const r = result.rows[0];
+        return {
+          indentId: r.INDENTID || r.indentId,
+          indentNo: r.INDENTNO || r.indentNo,
+          indentDate: r.INDENTDATE || r.indentDate,
+          status: r.STATUS || r.status,
+          categoryId: r.AICATEGORYID || r.aiCategoryId || 0,
+          categoryName: r.CATEGORYNAME || r.categoryName || 'General',
+          exists: true
+        };
+      }
+    }
+
+    // Fallback: Check if an indent already exists for this facility & financial year
+    if (facId > 0 && fyId > 0) {
+      const checkQuery = `
+        select a.indentid, a.indentno, to_char(a.indentdate,'dd-mm-yyyy') indentdate, a.status, a.AIcategoryid, 
+               coalesce(
+                 (select sub.catname || ' (' || mc2.categoryname || ')' from massubitemcategory sub inner join masitemcategories mc2 on mc2.categoryid = sub.categoryid where sub.subcatid = a.AIcategoryid),
+                 mc.categoryname,
+                 (select min(mc3.categoryname) from anualindent ai inner join masitems m on m.itemid = ai.itemid inner join masitemcategories mc3 on mc3.categoryid = m.categoryid where ai.indentid = a.indentid),
+                 'General'
+               ) categoryname 
+        from masAnualIndent a
+        left outer join masitemcategories mc on mc.categoryid = a.AIcategoryid
+        where a.facilityid = :facId
+          and a.accyrsetid = :fyId
+          and a.NONEDLIndentType is null
+          and a.isReagent is null
+        order by a.indentid desc
+      `;
+      const checkResult = await db.execute(checkQuery, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      if (checkResult.rows && checkResult.rows.length > 0) {
+        const r = checkResult.rows[0];
         return {
           indentId: r.INDENTID || r.indentId,
           indentNo: r.INDENTNO || r.indentNo,
@@ -1183,16 +1216,37 @@ async function getCreateIndentItems(facilityId, finYearId, indentId) {
              a.currentstock, a.facilityindentqty, a.status flag, nvl(a.Rate,0) as Rate,
              a.facilityindentqty*nvl(a.Rate,0) as indAprVal,
              m.ItemCode, m.ItemName, m.Strength1, m.Unit, m.PackingQty, b.ItemTypeCode,
+             b.itemtypename as formulation,
+             e.edl,
+             mt.categoryname,
+             case 
+                 when coalesce(f.facilitytypeid, 0) in (364, 378) then
+                     case 
+                         when m.EDL2025 = 'Y' 
+                          and (m.edl2025flag = 'COMMON' or m.edl2025flag = 'CME' or m.edl2025flag = 'DME') 
+                         then 'EDL' 
+                         else 'Non EDL' 
+                     end
+                 else
+                     case 
+                         when m.EDL2025 = 'Y' 
+                          and (m.edl2025flag = 'COMMON' or m.edl2025flag = 'DHS') 
+                         then 'EDL' 
+                         else case when mt.categoryid in (53, 54, 55) and m.isedl2021 = 'Y' then 'EDL' else 'Non EDL' end 
+                     end
+             end as EDLType,
              case when m.isedl2021='Y' then 'Yes' else 'No' end as EDL2021,
              case when m.EDL2025='Y' then 'Yes' else 'No' end as EDL2025,
              case when (m.edl2025flag='Common' or m.edl2025flag='DHS') then 'Yes' else 'No' end as IsIPHS,
              a.ACTUALCONSUMPTION
       from masanualindent ma 
       inner join anualindent a on a.indentid=ma.indentid
+      left outer join masfacilities f on f.facilityid = ma.facilityid
       inner join masitems m on a.itemid=m.itemid  
       left outer join masitemgroups g on g.groupid=m.groupid  
       inner join masitemcategories mt on mt.categoryid=m.categoryid 
       left outer Join masItemTypes b on (b.ItemTypeID = m.ItemTypeID)
+      left outer join masedl e on e.edlcat = m.edlcat
       where ma.indentid = :indId 
         and nvl(a.facilityindentqty, 0) > 0
     `;
@@ -1216,11 +1270,15 @@ async function getCreateIndentItems(facilityId, finYearId, indentId) {
       itemId: r.ITEMID || r.itemId,
       itemCode: r.ITEMCODE || r.itemCode || '-',
       itemName: r.ITEMNAME || r.itemName || '-',
+      formulation: r.FORMULATION || r.formulation || '-',
       strength: r.STRENGTH1 || r.strength1 || '-',
       unit: r.UNIT || r.unit || '-',
       packingQty: r.PACKINGQTY || r.packingQty || 1,
       itemTypeCode: r.ITEMTYPECODE || r.itemTypeCode || '-',
       groupName: r.GROUPNAME || r.groupName || '-',
+      edl: r.EDL || r.edl || '-',
+      categoryName: r.CATEGORYNAME || r.categoryName || 'DRUGS',
+      edlType: (String(r.EDLTYPE || r.edlType || '').trim().toUpperCase().includes('NON')) ? 'Non EDL' : ((String(r.EDLTYPE || r.edlType || '').trim().toUpperCase() === 'EDL' || String(r.EDLTYPE || r.edlType || '').trim().toUpperCase() === 'YES' || String(r.EDLTYPE || r.edlType || '').trim().toUpperCase() === 'Y') ? 'EDL' : 'Non EDL'),
       consumption: r.CONSUMPTION || r.consumption || 0,
       actualConsumption: r.ACTUALCONSUMPTION || r.actualConsumption || 0,
       projectedConsumption: r.PROJECTEDCONSUMPTION || r.projectedConsumption || 0,
@@ -1315,6 +1373,37 @@ async function generateIndentHeader(facilityId, finYearId, categoryId) {
     const facId = Number(facilityId) || 22595;
     const fyId = Number(finYearId) || 547;
     const catId = categoryId ? Number(categoryId) : null;
+
+    // Check if an existing EDL indent already exists for this facility & financial year
+    const existingCheck = await db.execute(
+      `select a.indentid, a.indentno, to_char(a.indentdate, 'dd-mm-yyyy') as indentdate, a.status, a.AIcategoryid,
+              coalesce(
+                (select sub.catname || ' (' || mc2.categoryname || ')' from massubitemcategory sub inner join masitemcategories mc2 on mc2.categoryid = sub.categoryid where sub.subcatid = a.AIcategoryid),
+                mc.categoryname,
+                'General'
+              ) as categoryname
+       from masAnualIndent a
+       left outer join masitemcategories mc on mc.categoryid = a.AIcategoryid
+       where a.facilityid = :facId
+         and a.accyrsetid = :fyId
+         and a.NONEDLIndentType is null
+         and a.isReagent is null
+       order by a.indentid desc`,
+      { facId, fyId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    if (existingCheck.rows && existingCheck.rows.length > 0) {
+      const r = existingCheck.rows[0];
+      return {
+        indentId: r.INDENTID || r.indentId,
+        indentNo: r.INDENTNO || r.indentNo,
+        indentDate: r.INDENTDATE || r.indentDate,
+        status: r.STATUS || r.status || 'I',
+        categoryId: r.AICATEGORYID || r.aiCategoryId || 0,
+        categoryName: r.CATEGORYNAME || r.categoryName || 'General',
+        exists: true
+      };
+    }
 
     // Check facility type to see if it's Medical College / DME
     const facTypeRes = await db.execute(
@@ -2682,7 +2771,26 @@ async function getIndentPdfItems(indentId) {
              m.unit,
              m.packingqty,
              b.itemtypecode,
+             b.itemtypename as formulation,
              g.groupname,
+             e.edl,
+             mt.categoryname,
+             case 
+                 when coalesce(f.facilitytypeid, 0) in (364, 378) then
+                     case 
+                         when m.EDL2025 = 'Y' 
+                          and (m.edl2025flag = 'COMMON' or m.edl2025flag = 'CME' or m.edl2025flag = 'DME') 
+                         then 'EDL' 
+                         else 'Non EDL' 
+                     end
+                 else
+                     case 
+                         when m.EDL2025 = 'Y' 
+                          and (m.edl2025flag = 'COMMON' or m.edl2025flag = 'DHS') 
+                         then 'EDL' 
+                         else case when mt.categoryid in (53, 54, 55) and m.isedl2021 = 'Y' then 'EDL' else 'Non EDL' end 
+                     end
+             end as edltype,
              nvl(a.consumption, 0) as consumption,
              nvl(a.actualconsumption, 0) as actualconsumption,
              nvl(a.projectedconsumption, 0) as projectedconsumption,
@@ -2692,9 +2800,13 @@ async function getIndentPdfItems(indentId) {
              round(nvl(a.facilityindentqty, 0) * nvl(a.rate, 0), 2) as indaprval,
              a.status as flag
       from anualindent a
+      inner join masanualindent ma on ma.indentid = a.indentid
+      left outer join masfacilities f on f.facilityid = ma.facilityid
       inner join masitems m on m.itemid = a.itemid
       left outer join masitemgroups g on g.groupid = m.groupid
       left outer join masitemtypes b on b.itemtypeid = m.itemtypeid
+      left outer join masitemcategories mt on mt.categoryid = m.categoryid
+      left outer join masedl e on e.edlcat = m.edlcat
       where a.indentid = :indId
         and nvl(a.facilityindentqty, 0) > 0
       order by m.itemname
@@ -2706,11 +2818,15 @@ async function getIndentPdfItems(indentId) {
       itemId: r.ITEMID || r.itemid,
       itemCode: r.ITEMCODE || r.itemcode || '-',
       itemName: r.ITEMNAME || r.itemname || '-',
+      formulation: r.FORMULATION || r.formulation || '-',
       strength: r.STRENGTH1 || r.strength1 || '-',
       unit: r.UNIT || r.unit || 'NOS',
       packingQty: r.PACKINGQTY || r.packingqty || 1,
       itemTypeCode: r.ITEMTYPECODE || r.itemtypecode || '-',
       groupName: r.GROUPNAME || r.groupname || '-',
+      edl: r.EDL || r.edl || '-',
+      categoryName: r.CATEGORYNAME || r.categoryname || 'DRUGS',
+      edlType: (String(r.EDLTYPE || r.edltype || '').trim().toUpperCase().includes('NON')) ? 'Non EDL' : ((String(r.EDLTYPE || r.edltype || '').trim().toUpperCase() === 'EDL' || String(r.EDLTYPE || r.edltype || '').trim().toUpperCase() === 'YES' || String(r.EDLTYPE || r.edltype || '').trim().toUpperCase() === 'Y') ? 'EDL' : 'Non EDL'),
       consumption: Number(r.CONSUMPTION || 0),
       actualConsumption: Number(r.ACTUALCONSUMPTION || 0),
       projectedConsumption: Number(r.PROJECTEDCONSUMPTION || 0),

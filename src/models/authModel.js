@@ -17,7 +17,7 @@ async function findByEmail(email) {
                         fac.FACILITYTYPEID,
                         ft.FACILITYTYPECODE,
                         ft.FACILITYTYPEDESC AS FACILITYTYPENAME,
-                        fac.FACILITYNAME, ft.HODID
+                        fac.FACILITYNAME, ft.HODID, fac.DISTRICTID
                  FROM USRUSERS u
                  LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                  LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
@@ -67,7 +67,7 @@ async function findByPhone(phoneNo) {
                         fac.FACILITYTYPEID,
                         ft.FACILITYTYPECODE,
                         ft.FACILITYTYPEDESC AS FACILITYTYPENAME,
-                        fac.FACILITYNAME, ft.HODID
+                        fac.FACILITYNAME, ft.HODID, fac.DISTRICTID
                  FROM USRUSERS u
                  LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                  LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
@@ -117,7 +117,7 @@ async function findByIdentifier(identifier) {
                         fac.FACILITYTYPEID,
                         ft.FACILITYTYPECODE,
                         ft.FACILITYTYPEDESC AS FACILITYTYPENAME,
-                        fac.FACILITYNAME, ft.HODID
+                        fac.FACILITYNAME, ft.HODID, fac.DISTRICTID
                  FROM USRUSERS u
                  LEFT JOIN MASFACHEADERFOOTER f ON f.USERID = TO_CHAR(u.USERID)
                  LEFT JOIN USRROLES r ON u.ROLEID = r.ROLEID
@@ -160,9 +160,9 @@ async function findByIdentifier(identifier) {
  * Direct lookup of FACILITYTYPEID and HODID from MASFACILITIES and MASFACILITYTYPES matching FACILITYID
  */
 async function getFacilityDetails(facilityId) {
-  if (!facilityId) return { facilityTypeId: null, hodId: null };
+  if (!facilityId) return { facilityTypeId: null, hodId: null, districtId: null };
   try {
-    const sql = `SELECT fac.FACILITYTYPEID, ft.HODID, ft.FACILITYTYPECODE, ft.FACILITYTYPEDESC 
+    const sql = `SELECT fac.FACILITYTYPEID, ft.HODID, ft.FACILITYTYPECODE, ft.FACILITYTYPEDESC, fac.DISTRICTID 
                  FROM MASFACILITIES fac
                  LEFT JOIN MASFACILITYTYPES ft ON fac.FACILITYTYPEID = ft.FACILITYTYPEID
                  WHERE fac.FACILITYID = :facilityId`;
@@ -173,20 +173,22 @@ async function getFacilityDetails(facilityId) {
         facilityTypeId: r.FACILITYTYPEID || null,
         hodId: r.HODID !== undefined && r.HODID !== null ? Number(r.HODID) : null,
         facilityTypeCode: r.FACILITYTYPECODE || null,
-        facilityTypeName: r.FACILITYTYPEDESC || null
+        facilityTypeName: r.FACILITYTYPEDESC || null,
+        districtId: r.DISTRICTID !== undefined && r.DISTRICTID !== null ? Number(r.DISTRICTID) : null
       };
     }
-    return { facilityTypeId: null, hodId: null };
+    return { facilityTypeId: null, hodId: null, districtId: null };
   } catch (err) {
     try {
-      const sql2 = `SELECT FACILITYTYPEID FROM MASFACILITIES WHERE FACILITYID = :facilityId`;
+      const sql2 = `SELECT FACILITYTYPEID, DISTRICTID FROM MASFACILITIES WHERE FACILITYID = :facilityId`;
       const result2 = await db.execute(sql2, { facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
       return {
         facilityTypeId: result2.rows && result2.rows.length > 0 ? result2.rows[0].FACILITYTYPEID : null,
-        hodId: null
+        hodId: null,
+        districtId: result2.rows && result2.rows.length > 0 && result2.rows[0].DISTRICTID !== undefined && result2.rows[0].DISTRICTID !== null ? Number(result2.rows[0].DISTRICTID) : null
       };
     } catch (e) {
-      return { facilityTypeId: null, hodId: null };
+      return { facilityTypeId: null, hodId: null, districtId: null };
     }
   }
 }
