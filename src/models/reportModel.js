@@ -80,19 +80,24 @@ async function getCgmscDrugWiseDropdowns(facilityId) {
   }
 
   try {
-    const itemSql = `Select ItemID, ItemCode || ' - (' || ItemName || ')' as ItemName from masItems Order By ItemName`;
+    const itemSql = `Select ItemID, ItemCode, ItemName, NVL(ItemCode, '') || ' - ' || NVL(ItemName, '') as FullItemName from masItems Order By ItemName`;
     const itemRes = await db.execute(itemSql, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-    items = (itemRes.rows || []).map(r => ({ itemId: r.ITEMID || r.itemId, itemName: r.ITEMNAME || r.itemName }));
+    items = (itemRes.rows || []).map(r => ({
+      itemId: r.ITEMID || r.itemId,
+      itemCode: r.ITEMCODE || r.itemCode || '',
+      itemName: r.ITEMNAME || r.itemName || '',
+      displayName: r.FULLITEMNAME || r.fullItemName || ((r.ITEMCODE || r.itemCode) ? `${r.ITEMCODE || r.itemCode} - ${r.ITEMNAME || r.itemName}` : (r.ITEMNAME || r.itemName))
+    }));
   } catch (err) {
     console.warn('DB query for items fallback:', err.message);
   }
 
   if (!items || items.length === 0) {
     items = [
-      { itemId: 5001, itemName: 'AC015 - (Turpentine Oil)' },
-      { itemId: 5002, itemName: 'D1001 - (Paracetamol Tablets 500mg)' },
-      { itemId: 5003, itemName: 'D1004 - (Amoxicillin Capsules 500mg)' },
-      { itemId: 5004, itemName: 'S2001 - (Disposable Syringes 5ml with Needle)' }
+      { itemId: 5001, itemCode: 'AC015', itemName: 'Turpentine Oil', displayName: 'AC015 - Turpentine Oil' },
+      { itemId: 5002, itemCode: 'D1001', itemName: 'Paracetamol Tablets 500mg', displayName: 'D1001 - Paracetamol Tablets 500mg' },
+      { itemId: 5003, itemCode: 'D1004', itemName: 'Amoxicillin Capsules 500mg', displayName: 'D1004 - Amoxicillin Capsules 500mg' },
+      { itemId: 5004, itemCode: 'S2001', itemName: 'Disposable Syringes 5ml with Needle', displayName: 'S2001 - Disposable Syringes 5ml with Needle' }
     ];
   }
 
@@ -109,19 +114,24 @@ async function getItemsByCategory(categoryId) {
       whereClause = ' Where CategoryID = :catId ';
       params.catId = Number(categoryId);
     }
-    const sql = `Select ItemID, ItemCode || ' - (' || ItemName || ')' as ItemName from masItems ${whereClause} Order By ItemName`;
+    const sql = `Select ItemID, ItemCode, ItemName, NVL(ItemCode, '') || ' - ' || NVL(ItemName, '') as FullItemName from masItems ${whereClause} Order By ItemName`;
     const res = await db.execute(sql, params, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-    items = (res.rows || []).map(r => ({ itemId: r.ITEMID || r.itemId, itemName: r.ITEMNAME || r.itemName }));
+    items = (res.rows || []).map(r => ({
+      itemId: r.ITEMID || r.itemId,
+      itemCode: r.ITEMCODE || r.itemCode || '',
+      itemName: r.ITEMNAME || r.itemName || '',
+      displayName: r.FULLITEMNAME || r.fullItemName || ((r.ITEMCODE || r.itemCode) ? `${r.ITEMCODE || r.itemCode} - ${r.ITEMNAME || r.itemName}` : (r.ITEMNAME || r.itemName))
+    }));
   } catch (err) {
     console.warn('DB query for items by category fallback:', err.message);
   }
 
   if (!items || items.length === 0) {
     items = [
-      { itemId: 5001, itemName: 'AC015 - (Turpentine Oil)' },
-      { itemId: 5002, itemName: 'D1001 - (Paracetamol Tablets 500mg)' },
-      { itemId: 5003, itemName: 'D1004 - (Amoxicillin Capsules 500mg)' },
-      { itemId: 5004, itemName: 'S2001 - (Disposable Syringes 5ml with Needle)' }
+      { itemId: 5001, itemCode: 'AC015', itemName: 'Turpentine Oil', displayName: 'AC015 - Turpentine Oil' },
+      { itemId: 5002, itemCode: 'D1001', itemName: 'Paracetamol Tablets 500mg', displayName: 'D1001 - Paracetamol Tablets 500mg' },
+      { itemId: 5003, itemCode: 'D1004', itemName: 'Amoxicillin Capsules 500mg', displayName: 'D1004 - Amoxicillin Capsules 500mg' },
+      { itemId: 5004, itemCode: 'S2001', itemName: 'Disposable Syringes 5ml with Needle', displayName: 'S2001 - Disposable Syringes 5ml with Needle' }
     ];
   }
 
@@ -134,7 +144,7 @@ async function getCgmscReceiptDrugWise(facilityId, warehouseId, categoryId, item
   try {
     const facId = Number(facilityId) || 22595;
     let whereClause = '';
-    const params = { facId };
+    const params = {};
 
     if (itemId && itemId !== '0') {
       whereClause += ' and mi.ITEMID = :itemId ';
@@ -154,8 +164,9 @@ async function getCgmscReceiptDrugWise(facilityId, warehouseId, categoryId, item
     if (targetFacilityId && targetFacilityId !== '0') {
       whereClause += ' and f.Facilityid = :targetFacilityId ';
       params.targetFacilityId = Number(targetFacilityId);
-    } else {
+    } else if (facId) {
       whereClause += ' and d.districtid in (select districtid FROM masfacilities where facilityid = :facId) ';
+      params.facId = facId;
     }
 
     if (fromDate && toDate && String(fromDate).trim() !== '' && String(toDate).trim() !== '') {
@@ -228,84 +239,7 @@ async function getCgmscReceiptDrugWise(facilityId, warehouseId, categoryId, item
       sku: r.SKU || r.sku || '-'
     }));
   } catch (error) {
-    console.warn('Error fetching Drug-wise CGMSC receipts, generating fallback:', error.message);
-  }
-
-  if (!rows || rows.length === 0) {
-    rows = [
-      {
-        slNo: 1,
-        warehouseName: 'Raigarh',
-        itemCode: 'AC015',
-        itemName: 'Turpentine Oil',
-        strength: '500 ml',
-        facilityName: 'AAM, TURANGA',
-        districtName: 'Raigarh',
-        reqDate: '15-09-2025',
-        reqQty: 50,
-        indentId: 10852,
-        issueDate: '17-09-2025',
-        issuedQty: 50,
-        facReceiptDate: '22-09-2025',
-        unitCount: 1,
-        daysToReceipt: 7,
-        sku: 'Bottle'
-      },
-      {
-        slNo: 2,
-        warehouseName: 'Raigarh',
-        itemCode: 'D1001',
-        itemName: 'Paracetamol Tablets 500mg',
-        strength: '500 mg',
-        facilityName: 'AAM, TURANGA',
-        districtName: 'Raigarh',
-        reqDate: '20-10-2025',
-        reqQty: 5000,
-        indentId: 10920,
-        issueDate: '25-10-2025',
-        issuedQty: 5000,
-        facReceiptDate: '30-10-2025',
-        unitCount: 1,
-        daysToReceipt: 10,
-        sku: 'Tab'
-      },
-      {
-        slNo: 3,
-        warehouseName: 'Raigarh',
-        itemCode: 'D1004',
-        itemName: 'Amoxicillin Capsules 500mg',
-        strength: '500 mg',
-        facilityName: 'AAM, TURANGA',
-        districtName: 'Raigarh',
-        reqDate: '05-11-2025',
-        reqQty: 3000,
-        indentId: 11015,
-        issueDate: '10-11-2025',
-        issuedQty: 3000,
-        facReceiptDate: '15-11-2025',
-        unitCount: 1,
-        daysToReceipt: 10,
-        sku: 'Cap'
-      },
-      {
-        slNo: 4,
-        warehouseName: 'Raigarh',
-        itemCode: 'S2001',
-        itemName: 'Disposable Syringes 5ml with Needle',
-        strength: '5 ml',
-        facilityName: 'AAM, TURANGA',
-        districtName: 'Raigarh',
-        reqDate: '01-12-2025',
-        reqQty: 10000,
-        indentId: 11200,
-        issueDate: '05-12-2025',
-        issuedQty: 10000,
-        facReceiptDate: '12-12-2025',
-        unitCount: 1,
-        daysToReceipt: 11,
-        sku: 'Pcs'
-      }
-    ];
+    console.error('Error fetching Drug-wise CGMSC receipts from DB:', error.message);
   }
 
   return rows;
@@ -317,13 +251,14 @@ async function getCgmscReceiptBatchWise(facilityId, warehouseId, targetFacilityI
   try {
     const facId = Number(facilityId) || 22595;
     let whereClause = '';
-    const params = { facId };
+    const params = {};
 
     if (targetFacilityId && targetFacilityId !== '0') {
       whereClause += ' and Fac.Facilityid = :targetFacilityId ';
       params.targetFacilityId = Number(targetFacilityId);
-    } else {
+    } else if (facId) {
       whereClause += ' and Fac.Facilityid = :facId ';
+      params.facId = facId;
     }
 
     if (warehouseId && warehouseId !== '0') {
@@ -404,42 +339,7 @@ async function getCgmscReceiptBatchWise(facilityId, warehouseId, targetFacilityI
       receivedValue: r.RECEIVEDVALUE || r.receivedValue || 0
     }));
   } catch (error) {
-    console.warn('Error fetching Batch-wise CGMSC receipts, generating fallback:', error.message);
-  }
-
-  if (!rows || rows.length === 0) {
-    rows = [
-      {
-        slNo: 1,
-        warehouseName: 'Raigarh',
-        facilityName: 'AAM, TURANGA',
-        itemCode: 'AC015',
-        itemName: 'Turpentine Oil',
-        strength: '500 ml',
-        unit: 'Bottle',
-        batchNo: 'B-8041',
-        whIssued: 50,
-        issueDate: '17-09-2025',
-        programName: 'General Supply',
-        finalRate: 120.50,
-        receivedValue: 6025.00
-      },
-      {
-        slNo: 2,
-        warehouseName: 'Raigarh',
-        facilityName: 'AAM, TURANGA',
-        itemCode: 'D1001',
-        itemName: 'Paracetamol Tablets 500mg',
-        strength: '500 mg',
-        unit: 'Tab',
-        batchNo: 'PCM-2025-09',
-        whIssued: 5000,
-        issueDate: '25-10-2025',
-        programName: 'Essential Drugs Program',
-        finalRate: 1.85,
-        receivedValue: 9250.00
-      }
-    ];
+    console.error('Error fetching Batch-wise CGMSC receipts from DB:', error.message);
   }
 
   return rows;

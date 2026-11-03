@@ -437,6 +437,21 @@ async function getPoAgainstNocReport(req, res, next) {
   }
 }
 
+async function getMrcDetails(req, res, next) {
+  try {
+    const facilityId = req.user.facilityId;
+    const { receiptId } = req.params;
+    if (!receiptId) return res.status(400).json({ error: 'receiptId is required' });
+
+    const data = await localPurchaseService.getMrcDetails(receiptId, facilityId);
+    if (!data) return res.status(404).json({ error: 'MRC details not found' });
+    res.json(data);
+  } catch (error) {
+    logger.error('Error in getMrcDetails: ' + error.message);
+    next(error);
+  }
+}
+
 module.exports = {
   getBudgets,
   getBudgetDetails,
@@ -473,5 +488,6 @@ module.exports = {
   getNocSummaryMedicalColleges,
   getNocSummaryReport,
   getPoAgainstNocCategories,
-  getPoAgainstNocReport
+  getPoAgainstNocReport,
+  getMrcDetails
 };

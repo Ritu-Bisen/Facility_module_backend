@@ -200,6 +200,12 @@ async function getPoAgainstNocReport(facilityId, categoryId, fromDate, toDate) {
   return await localPurchaseModel.getPoAgainstNocReport(facilityId, categoryId, fromDate, toDate);
 }
 
+async function getMrcDetails(receiptId, facilityId) {
+  if (!receiptId) throw new Error('Receipt ID is required');
+  if (!facilityId) throw new Error('Facility ID is required');
+  return await localPurchaseModel.getMrcDetails(receiptId, facilityId);
+}
+
 module.exports = {
   getBudgets,
   getBudgetDetails,
@@ -236,5 +242,6 @@ module.exports = {
   getNocSummaryMedicalColleges,
   getNocSummaryReport,
   getItemCategories,
-  getPoAgainstNocReport
+  getPoAgainstNocReport,
+  getMrcDetails
 };

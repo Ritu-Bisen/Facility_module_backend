@@ -1259,7 +1259,34 @@ async function getCreateIndentItems(facilityId, finYearId, indentId) {
       itemsQuery += ` and ma.accyrsetid = :fyId`;
       binds.fyId = fyId;
     }
-    itemsQuery += ` order by m.itemname`;
+    itemsQuery += `
+      order by 
+        case 
+          when (upper(mt.categoryname) like '%DRUG%' or mt.categoryname is null) and (
+            case 
+              when coalesce(f.facilitytypeid, 0) in (364, 378) then
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'CME', 'DME')) then 'EDL' else 'Non EDL' end
+              else
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'DHS')) then 'EDL'
+                     else case when mt.categoryid in (53, 54, 55) and m.isedl2021 = 'Y' then 'EDL' else 'Non EDL' end end
+            end = 'EDL'
+          ) then 1
+          when (upper(mt.categoryname) like '%DRUG%' or mt.categoryname is null) then 2
+          when (upper(mt.categoryname) like '%CONSUM%' or upper(mt.categoryname) like '%SURG%' or upper(mt.categoryname) like '%SUTUR%') and (
+            case 
+              when coalesce(f.facilitytypeid, 0) in (364, 378) then
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'CME', 'DME')) then 'EDL' else 'Non EDL' end
+              else
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'DHS')) then 'EDL'
+                     else case when mt.categoryid in (53, 54, 55) and m.isedl2021 = 'Y' then 'EDL' else 'Non EDL' end end
+            end = 'EDL'
+          ) then 3
+          when (upper(mt.categoryname) like '%CONSUM%' or upper(mt.categoryname) like '%SURG%' or upper(mt.categoryname) like '%SUTUR%') then 4
+          else 5
+        end,
+        nvl(g.groupname, 'ZZZ'),
+        m.itemname
+    `;
 
     const itemsRes = await db.execute(itemsQuery, binds, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const rows = itemsRes.rows || [];
@@ -1787,9 +1814,27 @@ async function uploadExcelIndentItems(facilityId, finYearId, indentId, items) {
       const itemId = masItem.itemId;
       const unitCount = masItem.unitCount;
       const rate = Number(item.rate) || 0;
-      const cons = Number(item.consumption) || 0;
-      const actCons = Number(item.actualConsumption) || 0;
-      const projCons = Number(item.projectedConsumption) || 0;
+
+      // Post Estimated_Consumption into CONSUMPTION column of anualindent table
+      const cons = Number(
+        item.estimatedConsumption !== undefined && item.estimatedConsumption !== null
+          ? item.estimatedConsumption
+          : (item.consumption !== undefined && item.consumption !== null ? item.consumption : (item.projectedConsumption || 0))
+      ) || 0;
+
+      // Post Actual_Consumption into ACTUALCONSUMPTION column of anualindent table
+      const actCons = Number(
+        item.actualConsumption !== undefined && item.actualConsumption !== null
+          ? item.actualConsumption
+          : (item.actualconsumption !== undefined && item.actualconsumption !== null ? item.actualconsumption : 0)
+      ) || 0;
+
+      const projCons = Number(
+        item.projectedConsumption !== undefined && item.projectedConsumption !== null
+          ? item.projectedConsumption
+          : (item.estimatedConsumption !== undefined && item.estimatedConsumption !== null ? item.estimatedConsumption : cons)
+      ) || 0;
+
       const stock = Number(item.currentStock) || 0;
 
       // Calculate fin indent qty matching C# logic
@@ -2053,7 +2098,32 @@ async function getReagentCreateIndentItems(facilityId, finYearId, indentId) {
         and ma.isReagent = 'Y'
         and ma.facilityid = :facId
         and ma.accyrsetid = :fyId
-      order by m.itemname
+      order by 
+        case 
+          when (upper(mt.categoryname) like '%DRUG%' or mt.categoryname is null) and (
+            case 
+              when coalesce(f.facilitytypeid, 0) in (364, 378) then
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'CME', 'DME')) then 'EDL' else 'Non EDL' end
+              else
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'DHS')) then 'EDL'
+                     else case when mt.categoryid in (53, 54, 55) and m.isedl2021 = 'Y' then 'EDL' else 'Non EDL' end end
+            end = 'EDL'
+          ) then 1
+          when (upper(mt.categoryname) like '%DRUG%' or mt.categoryname is null) then 2
+          when (upper(mt.categoryname) like '%CONSUM%' or upper(mt.categoryname) like '%SURG%' or upper(mt.categoryname) like '%SUTUR%') and (
+            case 
+              when coalesce(f.facilitytypeid, 0) in (364, 378) then
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'CME', 'DME')) then 'EDL' else 'Non EDL' end
+              else
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'DHS')) then 'EDL'
+                     else case when mt.categoryid in (53, 54, 55) and m.isedl2021 = 'Y' then 'EDL' else 'Non EDL' end end
+            end = 'EDL'
+          ) then 3
+          when (upper(mt.categoryname) like '%CONSUM%' or upper(mt.categoryname) like '%SURG%' or upper(mt.categoryname) like '%SUTUR%') then 4
+          else 5
+        end,
+        nvl(g.groupname, 'ZZZ'),
+        m.itemname
     `;
 
     const result = await db.execute(query, { indId, facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
@@ -2424,7 +2494,32 @@ async function getNonEdlCreateIndentItems(facilityId, finYearId, indentId) {
         and m.categoryid in (52, 53, 54, 55, 56, 63, 65, 66)
         and ma.facilityid = :facId
         and ma.accyrsetid = :fyId
-      order by m.itemname
+      order by 
+        case 
+          when (upper(mt.categoryname) like '%DRUG%' or mt.categoryname is null) and (
+            case 
+              when coalesce(f.facilitytypeid, 0) in (364, 378) then
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'CME', 'DME')) then 'EDL' else 'Non EDL' end
+              else
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'DHS')) then 'EDL'
+                     else case when mt.categoryid in (53, 54, 55) and m.isedl2021 = 'Y' then 'EDL' else 'Non EDL' end end
+            end = 'EDL'
+          ) then 1
+          when (upper(mt.categoryname) like '%DRUG%' or mt.categoryname is null) then 2
+          when (upper(mt.categoryname) like '%CONSUM%' or upper(mt.categoryname) like '%SURG%' or upper(mt.categoryname) like '%SUTUR%') and (
+            case 
+              when coalesce(f.facilitytypeid, 0) in (364, 378) then
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'CME', 'DME')) then 'EDL' else 'Non EDL' end
+              else
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'DHS')) then 'EDL'
+                     else case when mt.categoryid in (53, 54, 55) and m.isedl2021 = 'Y' then 'EDL' else 'Non EDL' end end
+            end = 'EDL'
+          ) then 3
+          when (upper(mt.categoryname) like '%CONSUM%' or upper(mt.categoryname) like '%SURG%' or upper(mt.categoryname) like '%SUTUR%') then 4
+          else 5
+        end,
+        nvl(g.groupname, 'ZZZ'),
+        m.itemname
     `;
 
     const result = await db.execute(query, { indId, facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
@@ -2809,7 +2904,32 @@ async function getIndentPdfItems(indentId) {
       left outer join masedl e on e.edlcat = m.edlcat
       where a.indentid = :indId
         and nvl(a.facilityindentqty, 0) > 0
-      order by m.itemname
+      order by 
+        case 
+          when (upper(mt.categoryname) like '%DRUG%' or mt.categoryname is null) and (
+            case 
+              when coalesce(f.facilitytypeid, 0) in (364, 378) then
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'CME', 'DME')) then 'EDL' else 'Non EDL' end
+              else
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'DHS')) then 'EDL'
+                     else case when mt.categoryid in (53, 54, 55) and m.isedl2021 = 'Y' then 'EDL' else 'Non EDL' end end
+            end = 'EDL'
+          ) then 1
+          when (upper(mt.categoryname) like '%DRUG%' or mt.categoryname is null) then 2
+          when (upper(mt.categoryname) like '%CONSUM%' or upper(mt.categoryname) like '%SURG%' or upper(mt.categoryname) like '%SUTUR%') and (
+            case 
+              when coalesce(f.facilitytypeid, 0) in (364, 378) then
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'CME', 'DME')) then 'EDL' else 'Non EDL' end
+              else
+                case when m.EDL2025 = 'Y' and (m.edl2025flag in ('COMMON', 'DHS')) then 'EDL'
+                     else case when mt.categoryid in (53, 54, 55) and m.isedl2021 = 'Y' then 'EDL' else 'Non EDL' end end
+            end = 'EDL'
+          ) then 3
+          when (upper(mt.categoryname) like '%CONSUM%' or upper(mt.categoryname) like '%SURG%' or upper(mt.categoryname) like '%SUTUR%') then 4
+          else 5
+        end,
+        nvl(g.groupname, 'ZZZ'),
+        m.itemname
     `;
     const res = await db.execute(query, { indId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     return (res.rows || []).map((r, idx) => ({

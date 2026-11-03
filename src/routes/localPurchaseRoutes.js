@@ -46,6 +46,7 @@ router.get('/receipts/:receiptId/batches', authenticate, localPurchaseController
 router.post('/receipts/:receiptId/batches', authenticate, localPurchaseController.saveReceiptBatch);
 router.delete('/receipts/batches/:inwNo', authenticate, localPurchaseController.deleteReceiptBatch);
 router.post('/receipts/:receiptId/complete', authenticate, localPurchaseController.completeReceipt);
+router.get('/receipts/:receiptId/mrc-details', authenticate, localPurchaseController.getMrcDetails);
 
 // PO Against NOC Report
 router.get('/po-against-noc/categories', authenticate, localPurchaseController.getPoAgainstNocCategories);

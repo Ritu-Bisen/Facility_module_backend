@@ -805,9 +805,11 @@ async function getReceiptItems(receiptId, poNoId, facilityId) {
   const sql = `
     SELECT 
       o.OrderItemID as "orderItemId",
-      o.ItemID as "itemId",
-      o.ItemName as "itemName",
+      COALESCE(o.ItemID, o.LPItemID, b.ItemID) as "itemId",
       o.LPItemID as "lpItemId",
+      COALESCE(v.ItemCode, lp.ItemCode, m.ItemCode) as "itemCode",
+      COALESCE(v.ItemName, lp.ItemName, m.ItemName, o.ItemName) as "itemName",
+      COALESCE(v.Strength1, lp.Strength, m.Strength1) as "strength",
       NVL(o.AbsQty,0) as "orderedQty",
       b.FacReceiptItemID as "receiptItemId",
       NVL(b.AbsrQty,0) as "receiptAbsQty",
@@ -815,6 +817,9 @@ async function getReceiptItems(receiptId, poNoId, facilityId) {
       NVL(o.AbsQty,0) - NVL(b.AbsrQty,0) - NVL(c.received,0) as "balanceQty"
     FROM LPsoOrderPlaced p
     INNER JOIN LPsoOrderedItems o ON p.PoNoID = o.PoNoID
+    LEFT JOIN VMASITEMS v ON v.ItemID = COALESCE(o.LPItemID, o.ItemID)
+    LEFT JOIN LPMASITEMS lp ON lp.LPItemID = COALESCE(o.LPItemID, o.ItemID)
+    LEFT JOIN MASITEMS m ON m.ItemID = COALESCE(o.ItemID, o.LPItemID)
     LEFT JOIN tbfacilityreceiptItems b ON b.OrderItemID = o.OrderItemID AND b.FacReceiptID = :receiptId
     LEFT JOIN (
       SELECT x.OrderItemID, SUM(x.AbsrQty) as received 
@@ -823,7 +828,7 @@ async function getReceiptItems(receiptId, poNoId, facilityId) {
       GROUP BY x.OrderItemID
     ) c ON c.OrderItemID = o.OrderItemID
     WHERE p.PoNoID = :poNoId AND p.PSAID = :facilityId
-    ORDER BY o.ItemName
+    ORDER BY COALESCE(v.ItemCode, lp.ItemCode, m.ItemCode), o.OrderItemID
   `;
   const res = await db.execute(sql, { receiptId: receiptId || 0, poNoId, facilityId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
   return res.rows;
@@ -875,7 +880,8 @@ async function getReceiptBatches(receiptId) {
     SELECT 
       a.FacReceiptItemID as "receiptItemId",
       a.ItemID as "itemId",
-      v.ItemName as "itemName",
+      COALESCE(v.ItemCode, lp.ItemCode, m.ItemCode) as "itemCode",
+      COALESCE(v.ItemName, lp.ItemName, m.ItemName) as "itemName",
       b.InwNo as "inwNo",
       b.BatchNo as "batchNo",
       b.StockLocation as "stockLocation",
@@ -883,10 +889,12 @@ async function getReceiptBatches(receiptId) {
       TO_CHAR(b.ExpDate, 'MM/YYYY') as "expDate",
       b.AbsRQty as "qty"
     FROM tbfacilityreceiptItems a
-    LEFT JOIN vmasItems v ON a.ItemID = v.ItemID
+    LEFT JOIN VMASITEMS v ON v.ItemID = a.ItemID
+    LEFT JOIN LPMASITEMS lp ON lp.LPItemID = a.ItemID
+    LEFT JOIN MASITEMS m ON m.ItemID = a.ItemID
     LEFT JOIN tbfacilityreceiptbatches b ON a.FacReceiptItemID = b.FacReceiptItemID
     WHERE a.FacReceiptID = :receiptId
-    ORDER BY v.ItemName, b.ExpDate
+    ORDER BY COALESCE(v.ItemName, lp.ItemName, m.ItemName), b.ExpDate
   `;
   const res = await db.execute(sql, { receiptId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
   
@@ -898,6 +906,7 @@ async function getReceiptBatches(receiptId) {
       itemsMap[rId] = {
         receiptItemId: rId,
         itemId: r.itemId || r.ITEMID,
+        itemCode: r.itemCode || r.ITEMCODE,
         itemName: r.itemName || r.ITEMNAME,
         batches: []
       };
@@ -1517,6 +1526,84 @@ async function getPoAgainstNocReport(facilityId, categoryId, fromDate, toDate) {
   return rows;
 }
 
+async function getMrcDetails(receiptId, facilityId) {
+  const headerSql = `
+    SELECT 
+      r.FacReceiptID as "receiptId",
+      r.FacilityID as "facilityId",
+      r.FacReceiptNo as "receiptNo",
+      TO_CHAR(r.FacReceiptDate, 'DD-MM-YYYY') as "receiptDate",
+      r.MRCNumber as "mrcNumber",
+      TO_CHAR(r.MRCDate, 'DD-MM-YYYY') as "mrcDate",
+      r.StkRegNo as "stkRegNo",
+      TO_CHAR(r.StkRegDate, 'DD-MM-YYYY') as "voucherDate",
+      r.InvoiceNo as "invoiceNo",
+      TO_CHAR(r.InvoiceDate, 'DD-MM-YYYY') as "invoiceDate",
+      r.Remarks as "remarks",
+      p.PoNo as "poNo",
+      TO_CHAR(p.PoDate, 'DD-MM-YYYY') as "poDate",
+      COALESCE(sup2.SupplierName, sup1.SupplierName) as "supplierName",
+      sup2.Address as "supplierAddress",
+      sup2.City as "supplierCity",
+      f.FacilityName as "facilityName",
+      fh.Header1 as "header1",
+      fh.Header2 as "header2",
+      fh.Header3 as "header3",
+      fh.Footer1 as "footer1",
+      fh.Footer2 as "footer2",
+      fh.DrName as "drName"
+    FROM tbfacilityreceipts r
+    INNER JOIN LPsoOrderPlaced p ON p.PoNoID = r.PoNoID
+    LEFT JOIN masSuppliers sup1 ON sup1.SupplierID = p.SupplierID
+    LEFT JOIN LPmasSuppliers sup2 ON sup2.LPSupplierID = p.LPSupplierID
+    INNER JOIN masFacilities f ON f.FacilityID = r.FacilityID
+    LEFT JOIN (
+      SELECT FacilityID, MAX(UserID) as UserID FROM usrUsers GROUP BY FacilityID
+    ) u ON u.FacilityID = f.FacilityID
+    LEFT JOIN masFacHeaderFooter fh ON fh.UserID = TO_CHAR(u.UserID)
+    WHERE r.FacReceiptID = :receiptId AND r.FacilityID = :facilityId
+  `;
+  const headerRes = await db.execute(headerSql, { receiptId, facilityId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
+  if (headerRes.rows.length === 0) return null;
+  const header = headerRes.rows[0];
+
+  const itemsSql = `
+    SELECT 
+      i.FacReceiptItemID as "receiptItemId",
+      i.ItemID as "itemId",
+      i.OrderItemID as "orderItemId",
+      NVL(i.AbsrQty, 0) as "totalReceiptQty",
+      NVL(o.AbsQty, 0) as "orderQty",
+      NVL(o.SingleUnitPrice, 0) as "price",
+      COALESCE(v.ItemCode, lp.ItemCode) as "itemCode",
+      COALESCE(v.ItemName, lp.ItemName) as "itemName",
+      COALESCE(v.Strength1, lp.Strength) as "strength",
+      b.InwNo as "inwNo",
+      b.BatchNo as "batchNo",
+      TO_CHAR(b.MfgDate, 'DD-MM-YYYY') as "mfgDate",
+      TO_CHAR(b.ExpDate, 'DD-MM-YYYY') as "expDate",
+      b.MfgDate as "rawMfgDate",
+      b.ExpDate as "rawExpDate",
+      r.FacReceiptDate as "rawReceiptDate",
+      NVL(b.AbsRQty, 0) as "batchQty",
+      ROUND(NVL(b.AbsRQty, 0) * NVL(o.SingleUnitPrice, 0), 2) as "batchReceivedValue"
+    FROM tbfacilityreceiptItems i
+    INNER JOIN tbfacilityreceipts r ON r.FacReceiptID = i.FacReceiptID
+    LEFT JOIN LPsoOrderedItems o ON o.OrderItemID = i.OrderItemID
+    LEFT JOIN VMASITEMS v ON v.ItemID = i.ItemID
+    LEFT JOIN LPMASITEMS lp ON lp.LPItemID = i.ItemID
+    LEFT JOIN tbfacilityreceiptbatches b ON b.FacReceiptItemID = i.FacReceiptItemID
+    WHERE i.FacReceiptID = :receiptId
+    ORDER BY COALESCE(v.ItemCode, lp.ItemCode), b.BatchNo
+  `;
+  const itemsRes = await db.execute(itemsSql, { receiptId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
+
+  return {
+    header,
+    items: itemsRes.rows
+  };
+}
+
 module.exports = {
   getBudgets,
   getBudgetDetails,
@@ -1553,5 +1640,6 @@ module.exports = {
   getNocSummaryMedicalColleges,
   getNocSummaryReport,
   getItemCategories,
-  getPoAgainstNocReport
+  getPoAgainstNocReport,
+  getMrcDetails
 };
