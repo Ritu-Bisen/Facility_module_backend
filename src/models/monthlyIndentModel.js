@@ -80,7 +80,7 @@ async function generateNocNumber(facilityId) {
 
   // Step 2: Get current financial year
   const yearResult = await db.execute(
-    `SELECT SHAccYear FROM masAccYearSettings WHERE SYSDATE BETWEEN StartDate AND EndDate`,
+    `SELECT SHAccYear FROM masAccYearSettings WHERE SYSDATE BETWEEN StartDate AND EndDate AND ROWNUM = 1`,
     {},
     { outFormat: oracledb.OUT_FORMAT_OBJECT }
   );
@@ -199,9 +199,15 @@ async function updateNocHeader({ nocId, nocDate, programId, accYrSetId }) {
 
 /**
  * Delete a NOC request and all its items.
- * Mirrors ltbndelete_Click from CgmsclNocMainDHS.aspx.cs
+ * Mirrors btnDelete_Click from CgmsclNocDHS.aspx.cs
  */
 async function deleteNoc(nocId) {
+  const checkIndentQuery = `SELECT NOCID FROM TBINDENTS WHERE NOCID = :nocId`;
+  const refRes = await db.execute(checkIndentQuery, { nocId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+  if (refRes.rows && refRes.rows.length > 0) {
+    throw new Error("Reference Found. Cannot delete NOC.");
+  }
+
   await db.execute(
     `DELETE FROM MASCGMSCNOCITEMS WHERE NOCID = :nocId`,
     { nocId },
@@ -216,10 +222,23 @@ async function deleteNoc(nocId) {
 
 /**
  * Complete a NOC request (set status to 'C').
+ * Mirrors btnComplete_Click from CgmsclNocDHS.aspx.cs
  */
 async function completeNoc(nocId) {
+  const appCheck = `SELECT SR FROM MASCGMSCNOCITEMS WHERE NVL(APPROVEDQTY, 0) > 0 AND NOCID = :nocId`;
+  const appRes = await db.execute(appCheck, { nocId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+  if (appRes.rows && appRes.rows.length > 0) {
+    throw new Error("Automatic NOC Process has been blocked, You may Contact/Letter to Central Store DHS with the Requirement");
+  }
+
+  const countCheck = `SELECT COUNT(*) AS CNT FROM MASCGMSCNOCITEMS WHERE NOCID = :nocId`;
+  const countRes = await db.execute(countCheck, { nocId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+  if (!countRes.rows || countRes.rows[0].CNT === 0) {
+    throw new Error("Please enter Item details first.");
+  }
+
   await db.execute(
-    `UPDATE MASCGMSCNOC SET STATUS = 'C' WHERE NOCID = :nocId`,
+    `UPDATE MASCGMSCNOC SET STATUS = 'C', NOCDATE = SYSDATE WHERE NOCID = :nocId`,
     { nocId },
     { autoCommit: true }
   );
@@ -265,50 +284,181 @@ async function getNocById(nocId) {
 
 /**
  * Get NOC items for a given NOCID.
+ * For DHS facilities (!isMC), executes the exact PopulateItems query from CgmsclNocDHS.aspx.cs.
  */
 async function getNocItems(nocId, facilityId = null, isMC = false) {
+  const safeNocId = Number(nocId) || nocId;
+  const safeFacId = facilityId ? (Number(facilityId) || facilityId) : null;
+
+  if (!isMC && safeFacId) {
+    try {
+      const dhsQuery = `
+        SELECT 
+          0 AS SlNo,
+          b.SR,
+          b.SR AS NOCITEMID,
+          b.ItemID,
+          mi.ITEMCODE,
+          mi.ITEMNAME,
+          mi.STRENGTH1,
+          mi.UNIT,
+          NVL(mi.UNITCOUNT, 1) AS UNITCOUNT,
+          mi.EDL,
+          b.requestedqty * NVL(mi.unitcount, 1) AS AbsQty,
+          b.requestedqty * NVL(mi.unitcount, 1) AS REQUESTEDQTY,
+          a.status AS STATUS,
+          a.NocId AS NOCID,
+          a.Remarks AS NOCREMARKS,
+          NVL(b.whStock, 0) * NVL(mi.unitcount, 1) AS WHStock,
+          b.ItemRemarks AS ITEMREMARKS,
+          b.ItemRemarks AS REMARKS,
+          NVL(b.WHStockQCPending, 0) * NVL(mi.unitcount, 1) AS WHStockQCPending,
+          TO_CHAR(b.EstimatedDate, 'dd-mm-yyyy') AS EstimatedDate,
+          b.CgmsclRemarks AS CGMSCLRemarks,
+          b.WHID,
+          NVL(b.Otherwhstock, 0) AS Otherwhstock,
+          NVL(b.approvedqty, 0) * NVL(mi.unitcount, 1) AS APPROVEDQTY,
+          NVL(b.BookedQTY, 0) * NVL(mi.unitcount, 1) AS BOOKEDQTY,
+          NVL(b.STOCKINHAND, 0) AS STOCKINHAND,
+          NVL(ind.Indentqty, 0) AS AIQTY,
+          NVL(ind.issueqty, 0) AS WHISSUEQTY,
+          NVL(ind.NOcQty, 0) AS NOCQTY,
+          NVL(ind.BalIndentqty, 0) AS BALAIQTY,
+          NVL(ind.TranIssueQty, 0) AS TRANISSUEQTY,
+          NVL(ind.TranQtyRecv, 0) AS TRANQTYRECV
+        FROM MASCGMSCNOC a
+        INNER JOIN MASCGMSCNOCITEMS b ON a.nocid = b.nocid
+        INNER JOIN masitems mi ON mi.ItemID = b.ItemID 
+        LEFT OUTER JOIN 
+        (
+          SELECT 
+            m.itemid,
+            NVL(II.Indentqty, 0) AS Indentqty,
+            NVL(Iss.issueqty, 0) * NVL(m.unitcount, 1) AS issueqty,
+            NVL(Noc.NOcQty, 0) * NVL(m.unitcount, 1) AS NOcQty,
+            (NVL(II.Indentqty, 0) + NVL(ITR.TranQtyRecv, 0)) AS totRecv,
+            ((((NVL(Iss.issueqty, 0) + NVL(Noc.NOcQty, 0))) * NVL(m.unitcount, 1)) + NVL(ITI.TranIssueQty, 0)) AS toIssue,
+            NVL((NVL(II.Indentqty, 0) + NVL(ITR.TranQtyRecv, 0)) - ((((NVL(Iss.issueqty, 0) + NVL(Noc.NOcQty, 0))) * NVL(m.unitcount, 1)) + NVL(ITI.TranIssueQty, 0)), 0) AS BalIndentqty,
+            NVL(ITR.TranQtyRecv, 0) AS TranQtyRecv,
+            NVL(ITI.TranIssueQty, 0) AS TranIssueQty 
+          FROM MASCGMSCNOC mn 
+          INNER JOIN MASCGMSCNOCITEMS mni ON mni.nocid = mn.nocid 
+          INNER JOIN masitems m ON m.ItemID = mni.ItemID 
+          LEFT OUTER JOIN (
+            SELECT ai.itemid, SUM(ROUND(NVL(ai.cmhodistqty, 0), 0)) AS Indentqty, MAX(NVL(m.unitcount, 1)) AS unitcount
+            FROM masanualindent ma
+            INNER JOIN anualindent ai ON ai.indentid = ma.indentid
+            INNER JOIN masitems m ON m.itemid = ai.itemid
+            WHERE ai.status = 'C' AND ma.status = 'C' AND ai.facilityid = :facilityId 
+              AND ai.accyrsetid IN (SELECT accyrsetid FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate)
+              AND NVL(ai.cmhodistqty, 0) > 0 
+            GROUP BY ai.itemid
+          ) II ON II.itemid = m.itemid
+          LEFT OUTER JOIN 
+          (
+            SELECT tb.facilityid, tbi.itemid, SUM(tbo.issueqty) AS issueqty 
+            FROM tbindents tb
+            INNER JOIN tbindentitems tbi ON tbi.indentid = tb.indentid
+            INNER JOIN tboutwards tbo ON tbo.indentitemid = tbi.indentitemid
+            WHERE tb.facilityid = :facilityId AND tb.status = 'C' 
+              AND tb.indentdate BETWEEN (SELECT startdate FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate AND ROWNUM = 1) 
+                                    AND (SELECT enddate FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate AND ROWNUM = 1)
+            GROUP BY tb.facilityid, tbi.itemid 
+          ) Iss ON Iss.itemid = m.itemid
+          LEFT OUTER JOIN 
+          (
+            SELECT mn.facilityid, mni.itemid, SUM(mni.approvedqty) AS NOcQty 
+            FROM mascgmscnoc mn 
+            INNER JOIN mascgmscnocitems mni ON mni.nocid = mn.nocid
+            WHERE mn.status = 'C' AND mn.facilityid = :facilityId 
+              AND mn.nocdate BETWEEN (SELECT startdate FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate AND ROWNUM = 1) 
+                                 AND (SELECT enddate FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate AND ROWNUM = 1)
+            GROUP BY mn.facilityid, mni.itemid 
+          ) Noc ON Noc.itemid = m.itemid
+          LEFT OUTER JOIN 
+          (
+            SELECT itemid, SUM(NVL(transferqty, 0)) AS TranQtyRecv
+            FROM (
+              SELECT ai.transferqty, ai.itemid, a.facilityid
+              FROM MASFACILITYAITRANSFER a
+              INNER JOIN facilityaitransferitems ai ON ai.aitransferid = a.aitransferid
+              WHERE a.status = 'C' AND a.accyrsetid IN (SELECT accyrsetid FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate)
+                AND a.facilityid = :facilityId 
+            ) GROUP BY itemid
+          ) ITR ON ITR.itemid = m.itemid
+          LEFT OUTER JOIN 
+          (
+            SELECT itemid, SUM(NVL(transferqty, 0)) AS TranIssueQty
+            FROM (
+              SELECT ai.transferqty, ai.itemid, ai.fromfacilityid AS facilityid
+              FROM MASFACILITYAITRANSFER a
+              INNER JOIN facilityaitransferitems ai ON ai.aitransferid = a.aitransferid
+              WHERE a.status = 'C' AND a.accyrsetid IN (SELECT accyrsetid FROM masaccyearsettings WHERE sysdate BETWEEN startdate AND enddate)
+                AND ai.fromfacilityid = :facilityId 
+            ) GROUP BY itemid
+          ) ITI ON ITI.itemid = m.itemid 
+          WHERE mn.nocid = :nocId
+        ) ind ON ind.itemid = b.itemid
+        WHERE a.nocid = b.nocid AND a.NOCID = :nocId 
+        ORDER BY b.sr
+      `;
+      const res = await db.execute(dhsQuery, { nocId: safeNocId, facilityId: safeFacId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      if (res && res.rows) {
+        return res.rows;
+      }
+    } catch (dhsErr) {
+      console.warn('dhsQuery in getNocItems failed, falling back to direct query:', dhsErr.message);
+    }
+  }
+
   const query = `
     SELECT
       b.SR as NOCITEMID,
+      b.SR,
       b.NOCID,
       b.ITEMID,
       m.ITEMCODE,
       m.ITEMNAME,
       m.STRENGTH1,
       m.UNIT,
-      b.REQUESTEDQTY,
-      b.WHSTOCK,
-      NVL(b.WHSTOCKQCPENDING, 0) AS WHSTOCKQCPENDING,
+      NVL(m.UNITCOUNT, 1) AS UNITCOUNT,
+      m.EDL,
+      b.REQUESTEDQTY * NVL(m.UNITCOUNT, 1) AS REQUESTEDQTY,
+      b.REQUESTEDQTY * NVL(m.UNITCOUNT, 1) AS ABSQTY,
+      NVL(b.WHSTOCK, 0) * NVL(m.UNITCOUNT, 1) AS WHSTOCK,
+      NVL(b.WHSTOCKQCPENDING, 0) * NVL(m.UNITCOUNT, 1) AS WHSTOCKQCPENDING,
       NVL(b.OTHERWHSTOCK, 0) AS OTHERWHSTOCK,
-      b.ESTIMATEDDATE,
-      NVL(b.BOOKEDQTY, 0)   AS BOOKEDQTY,
-      NVL(b.APPROVEDQTY, 0) AS APPROVEDQTY,
+      TO_CHAR(b.ESTIMATEDDATE, 'dd-mm-yyyy') AS ESTIMATEDDATE,
+      NVL(b.BOOKEDQTY, 0) * NVL(m.UNITCOUNT, 1) AS BOOKEDQTY,
+      NVL(b.APPROVEDQTY, 0) * NVL(m.UNITCOUNT, 1) AS APPROVEDQTY,
       NVL(b.STOCKINHAND, 0) AS STOCKINHAND,
       b.ITEMREMARKS as REMARKS,
+      b.ITEMREMARKS,
       b.CGMSCLREMARKS
     FROM MASCGMSCNOCITEMS b
-    INNER JOIN VMASITEMS m ON m.ITEMID = b.ITEMID
+    LEFT OUTER JOIN MASITEMS m ON m.ITEMID = b.ITEMID
     WHERE b.NOCID = :nocId
     ORDER BY b.SR
   `;
-  const result = await db.execute(query, { nocId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+  const result = await db.execute(query, { nocId: safeNocId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
   
-  if (facilityId) {
+  if (safeFacId && result.rows && result.rows.length > 0) {
     for (let row of result.rows) {
       try {
-        const stockDetails = await getItemStockDetails(facilityId, row.ITEMID, isMC);
-        row.WHSTOCK = stockDetails.whStock;
-        row.WHSTOCKQCPENDING = stockDetails.qcStock;
-        row.OTHERWHSTOCK = stockDetails.otherWhStock;
-        // Do not overwrite STOCKINHAND here, use the saved value in the DB.
-        row.ESTIMATEDDATE = stockDetails.estDate;
-        row.AIQTY = stockDetails.aiQty;
-        row.WHISSUEQTY = stockDetails.whIssueQty;
-        row.NOCQTY = stockDetails.nocQty;
-        row.BALAIQTY = stockDetails.balAiQty;
-        row.STRENGTH1 = stockDetails.strength;
-        row.UNIT = stockDetails.sku;
-        row.UNITCOUNT = stockDetails.unitCount;
+        const stockDetails = await getItemStockDetails(safeFacId, row.ITEMID, isMC);
+        if (row.WHSTOCK === null || row.WHSTOCK === undefined) row.WHSTOCK = stockDetails.whStock;
+        if (row.WHSTOCKQCPENDING === null || row.WHSTOCKQCPENDING === undefined) row.WHSTOCKQCPENDING = stockDetails.qcStock;
+        if (row.OTHERWHSTOCK === null || row.OTHERWHSTOCK === undefined) row.OTHERWHSTOCK = stockDetails.otherWhStock;
+        if (!row.ESTIMATEDDATE) row.ESTIMATEDDATE = stockDetails.estDate;
+        row.AIQTY = stockDetails.aiQty ?? 0;
+        row.WHISSUEQTY = stockDetails.whIssueQty ?? 0;
+        row.NOCQTY = stockDetails.nocQty ?? 0;
+        row.BALAIQTY = stockDetails.balAiQty ?? 0;
+        row.TRANISSUEQTY = stockDetails.tranIssueQty ?? 0;
+        row.TRANQTYRECV = stockDetails.tranQtyRecv ?? 0;
+        if (!row.STRENGTH1) row.STRENGTH1 = stockDetails.strength;
+        if (!row.UNIT) row.UNIT = stockDetails.sku;
+        row.UNITCOUNT = stockDetails.unitCount ?? 1;
         row.ITEMTYPENAME = stockDetails.itemTypeName;
         row.EDLTYPE = stockDetails.edlType;
       } catch (err) {
@@ -317,7 +467,7 @@ async function getNocItems(nocId, facilityId = null, isMC = false) {
     }
   }
 
-  return result.rows;
+  return result.rows || [];
 }
 
 async function getFacilityStockInHand(facilityId, itemId) {
@@ -425,64 +575,186 @@ async function getOtherWarehouseStock(facilityId, itemId) {
   return result.rows.length > 0 ? (Number(result.rows[0].STK) || 0) : 0;
 }
 
+/**
+ * Check if previous NOC has items not cancelled or converted to PO.
+ * Mirrors CheckNOCancel() from CgmsclNocDHS.aspx.cs
+ */
+async function checkNocCancel(facilityId) {
+  const query = `
+    SELECT facilityid, facilityname, nocid, nocnumber, TO_CHAR(nocdate, 'dd-MM-yyyy') AS nocdate,
+           COUNT(DISTINCT itemid) AS cntNoitems, COUNT(DISTINCT LPITEMID) AS cntlpitems,
+           COUNT(DISTINCT cacelitemid) AS cacelitemid,
+           COUNT(DISTINCT itemid) - (COUNT(DISTINCT LPITEMID) + COUNT(DISTINCT cacelitemid)) AS cntbal
+    FROM (
+      SELECT m.itemcode, mn.nocid, mn.nocnumber, mn.nocdate, f.facilityname, mn.facilityid, mni.itemid,
+             lp.LPITEMID, lp.pono, lp.podate, mni.Iscancel,
+             CASE WHEN NVL(mni.Iscancel, 'N') = 'Y' THEN mni.itemid END AS cacelitemid
+      FROM mascgmscnoc mn
+      INNER JOIN mascgmscnocitems mni ON mni.nocid = mn.nocid
+      INNER JOIN masfacilities f ON f.facilityid = mn.facilityid
+      INNER JOIN masitems m ON m.itemid = mni.itemid
+      LEFT OUTER JOIN (
+        SELECT lp.PSAID AS Facilityid, lp.ponoid, lp.PONO, lp.PODATE, lpi.LPITEMID, NOCID, m.itemcode
+        FROM lpsoorderplaced lp 
+        INNER JOIN lpsoordereditems lpi ON lpi.ponoid = lp.ponoid
+        INNER JOIN vmasitems mv ON mv.itemid = lpi.LPITEMID
+        INNER JOIN masitems m ON m.itemcode = mv.EDLITEMCODE
+        WHERE lp.PSAID = :facilityId
+          AND lp.ACCYRSETID IN (SELECT accyrsetid FROM masaccyearsettings WHERE SYSDATE BETWEEN startdate AND enddate) 
+          AND NOCID IS NOT NULL
+      ) lp ON lp.Facilityid = mn.facilityid AND mn.nocid = lp.NOCID AND lp.itemcode = m.itemcode
+      WHERE mn.status = 'C' AND NVL(mni.approvedqty, 0) > 0  
+        AND mn.accyrsetid IN (SELECT accyrsetid FROM masaccyearsettings WHERE SYSDATE BETWEEN startdate AND enddate) 
+        AND mn.facilityid = :facilityId
+    ) GROUP BY nocid, nocnumber, nocdate, facilityid, facilityname
+    HAVING COUNT(DISTINCT itemid) - (COUNT(DISTINCT LPITEMID) + COUNT(DISTINCT cacelitemid)) > 0
+  `;
+  try {
+    const res = await db.execute(query, { facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    return res.rows && res.rows.length > 0;
+  } catch (e) {
+    console.error('Error in checkNocCancel:', e);
+    return false;
+  }
+}
+
+/**
+ * Check if item is active in annual indent.
+ * Mirrors CheckItemIsActive(itemid) from CgmsclNocDHS.aspx.cs
+ */
+async function checkItemIsActive(facilityId, itemId) {
+  const query = `
+    SELECT ai.itemid, ROUND(SUM(NVL(ai.cmhodistqty, 0)), 0) AS Indentqty
+    FROM anualindent ai
+    INNER JOIN masanualindent a ON a.indentid = ai.indentid
+    INNER JOIN masitems m ON m.itemid = ai.itemid
+    WHERE m.isfreezed IS NULL AND ai.status = 'C' AND a.status = 'C' 
+      AND ai.itemid = :itemId
+      AND ai.facilityid = :facilityId
+      AND ai.accyrsetid IN (SELECT accyrsetid FROM masaccyearsettings WHERE SYSDATE BETWEEN startdate AND enddate)
+    GROUP BY ai.itemid, m.unitcount
+    HAVING ROUND(SUM(NVL(ai.cmhodistqty, 0)), 0) > 0
+  `;
+  try {
+    const res = await db.execute(query, { itemId, facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    return res.rows && res.rows.length > 0 && Number(res.rows[0].INDENTQTY) > 0;
+  } catch (e) {
+    console.error('Error in checkItemIsActive:', e);
+    return false;
+  }
+}
+
+/**
+ * Check if item already exists in this NOC request.
+ * Mirrors IsItemExist(nocid, itemID) from CgmsclNocDHS.aspx.cs
+ */
+async function isItemExist(nocId, itemId) {
+  const query = `SELECT itemid FROM mascgmscnocitems WHERE nocid = :nocId AND itemid = :itemId`;
+  const res = await db.execute(query, { nocId, itemId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+  return res.rows && res.rows.length > 0;
+}
+
+/**
+ * Save an item into MASCGMSCNOCITEMS.
+ * Exactly implements the business rules, validations, and storage from CgmsclNocDHS.aspx.cs (RowUpdating).
+ */
 async function saveNocItem({
-  nocId, facilityId, itemId, requestedqty, whStock, itemRemarks,
-  whStockQcPending, estimatedDate, whId, cgmsclRemarks,
-  otherWhStock, stockInHand, itemType, status, bookedQty, approvedQty, bookedFlag, entry_date, cmhoapplieddttime, balAiQty
+  nocId, facilityId, itemId, requestedqty, stockInHand, itemRemarks,
+  isMC = false, urgentNoc = null, urgentRemark = null
 }) {
-  const reqQty = Number(requestedqty) || 0;
-  const availStock = Number(whStock) || 0;
-  
-  let bQty = 0;
-  let aQty = 0;
-  let bFlag = bookedFlag !== undefined ? bookedFlag : 'N';
-  let computedRemarks = cgmsclRemarks || null;
-  let stat = status || 'I';
+  // 1. Get warehouse ID
+  const whQuery = `SELECT warehouseid FROM masfacilitywh WHERE facilityid = :facilityId`;
+  const whRes = await db.execute(whQuery, { facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+  const whId = whRes.rows.length > 0 ? whRes.rows[0].WAREHOUSEID : '0';
 
-  let computedStockInHand = stockInHand;
-  let computedOtherWhStock = otherWhStock;
+  // 2. Get item unit count
+  const itemQuery = `SELECT NVL(unitcount, 1) AS UNITCOUNT FROM masitems WHERE itemid = :itemId`;
+  const itemRes = await db.execute(itemQuery, { itemId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+  const unitCount = itemRes.rows.length > 0 ? (Number(itemRes.rows[0].UNITCOUNT) || 1) : 1;
 
-  if (facilityId && itemId) {
-    try {
-      computedStockInHand = await getFacilityStockInHand(facilityId, itemId);
-      computedOtherWhStock = await getOtherWarehouseStock(facilityId, itemId);
-    } catch (e) {
-      console.error('Error fetching dynamic stock for saving NOC item:', e);
-    }
+  const mAbsQty = Number(requestedqty) || 0;
+  if (mAbsQty <= 0) {
+    throw new Error("Requested Qty must be greater than 0");
   }
-  
-  // Calculate Booked Qty and Approved Qty based on WH Stock (ready)
-  if (availStock >= reqQty) {
-    bQty = reqQty;
-    aQty = 0;
-    bFlag = 'B';
-    computedRemarks = "Fully Booked";
-  } else if (availStock > 0) {
-    bQty = availStock;
-    aQty = reqQty - availStock;
-    bFlag = 'B';
-    computedRemarks = "Noc Pending For Approval";
+  if (mAbsQty % unitCount !== 0) {
+    throw new Error(`Enter Quantity Should be Multiple of ${unitCount}`);
+  }
+
+  // 3. Prevent duplicate item in same NOC
+  const exists = await isItemExist(nocId, itemId);
+  if (exists) {
+    throw new Error("This item is already added to this Request. Please edit the existing item below.");
+  }
+
+  // 4. Fetch dynamic stock & indent details
+  const stock = await getItemStockDetails(facilityId, itemId, isMC);
+  const mWHstock = Number(stock.whStock) || 0;
+  const mWHstockQC = Number(stock.qcStock) || 0;
+  const mOtherWHstk = Number(stock.otherWhStock) || 0;
+  const mStockInhand = stockInHand !== undefined && stockInHand !== null ? Number(stockInHand) : (Number(stock.facStock) || 0);
+  const mBalIndentqty = Number(stock.balAiQty) || 0;
+  const mEstimatedDate = stock.estDate || null;
+
+  const a = mAbsQty;
+  const b = mWHstock;
+
+  let mcgmsclRemarks = "";
+  let mStatus = "I";
+  let mApprovedQty = 0;
+  let mBookedQty = 0;
+  let mBookedFlag = "null";
+
+  if (!isMC) {
+    // Exact DHS Rule from CgmsclNocDHS.aspx.cs line 465:
+    if (mWHstock === 0 || a > b) {
+      throw new Error("Automatic NOC Process has been blocked, You may Contact/Letter to Central Store DHS with the Requirement.");
+    }
+
+    // Complete stock available in WH (Convert.ToInt32(mWHstock) > 0 && Convert.ToInt32(mWHstock) >= a):
+    mcgmsclRemarks = "Indent Placed";
+    mStatus = "N";
+    mApprovedQty = 0;
+    mBookedQty = mAbsQty;
+    mBookedFlag = "B";
   } else {
-    bQty = 0;
-    aQty = reqQty;
-    bFlag = 'N';
-    computedRemarks = "Not Booked";
+    // MC logic
+    if (mWHstock >= mAbsQty) {
+      mBookedQty = mAbsQty;
+      mcgmsclRemarks = "Fully Booked";
+    } else {
+      mBookedQty = mWHstock;
+      mApprovedQty = mAbsQty - mWHstock;
+      mcgmsclRemarks = "Noc Pending For Approval";
+    }
   }
 
-  // Cap Approved Qty (NOC Qty) to Annual Indent Balance Qty
-  if (balAiQty !== undefined && balAiQty !== null) {
-    const totBalIndentQty = Number(balAiQty) - bQty;
-    if (totBalIndentQty >= aQty) {
-      // Do nothing, enough AI balance
-    } else {
-      if (totBalIndentQty > 0) {
-        if (totBalIndentQty < aQty) {
-          aQty = totBalIndentQty;
-        }
-      } else {
-        aQty = 0;
-      }
+  // Convert quantities to PACKS for storage in MASCGMSCNOCITEMS
+  const aqty = Math.floor(mAbsQty / unitCount);
+  const whstockPacks = Math.floor(mWHstock / unitCount);
+  const qcqty = Math.floor(mWHstockQC / unitCount);
+  const bqty = Math.floor(mBookedQty / unitCount);
+  const appqty = Math.floor(mApprovedQty / unitCount);
+
+  if (appqty > 0) {
+    const hasCancel = await checkNocCancel(facilityId);
+    if (hasCancel) {
+      throw new Error("NOC can't be Generated.(Suggestion :Please Cancel Previous NOC Or Generate Local PO On Previous NOC.)");
     }
+    const isActive = await checkItemIsActive(facilityId, itemId);
+    if (!isActive) {
+      throw new Error("This Drug is not in Your Annual Indent then NOC can not be Generated");
+    }
+  }
+
+  let safeEstDateObj = null;
+  if (mEstimatedDate && mEstimatedDate !== 'null' && mEstimatedDate !== '0') {
+    const parts = String(mEstimatedDate).split(/[-/]/);
+    if (parts.length === 3 && parts[2].length === 4) {
+      safeEstDateObj = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+    } else {
+      safeEstDateObj = new Date(mEstimatedDate);
+    }
+    if (isNaN(safeEstDateObj)) safeEstDateObj = null;
   }
 
   const query = `
@@ -490,116 +762,96 @@ async function saveNocItem({
       (NOCID, ITEMID, REQUESTEDQTY, WHSTOCK, ITEMREMARKS, 
        WHSTOCKQCPENDING, ESTIMATEDDATE, WHID, CGMSCLREMARKS, 
        OTHERWHSTOCK, STATUS, APPROVEDQTY, BOOKEDQTY, BOOKEDFLAG, STOCKINHAND,
-       ENTRY_DATE, CMHOAPPLIEDDTTIME)
+       ENTRY_DATE)
     VALUES
       (:nocId, :itemId, :requestedqty, :whStock, :itemRemarks, 
        :whStockQcPending, :estimatedDate, :whId, :cgmsclRemarks, 
        :otherWhStock, :status, :approvedQty, :bookedQty, :bookedFlag, :stockInHand,
-       :entryDate,
-       TO_TIMESTAMP(:cmhoapplieddttime, 'dd-mm-yy hh:mi:ss.ff9 AM'))
+       SYSDATE)
     RETURNING SR INTO :nocItemId
   `;
-
-  let safeEstDateObj = null;
-  if (estimatedDate && estimatedDate !== 'null' && estimatedDate !== '0') {
-    safeEstDateObj = new Date(estimatedDate);
-    if (isNaN(safeEstDateObj)) safeEstDateObj = null;
-  }
-
-  let safeEntryDateObj = null;
-  if (entry_date && entry_date !== 'null' && entry_date !== '0') {
-    safeEntryDateObj = new Date(entry_date);
-    if (isNaN(safeEntryDateObj)) safeEntryDateObj = null;
-  }
 
   const binds = {
     nocId,
     itemId,
-    requestedqty: reqQty,
-    whStock: availStock,
-    itemRemarks: itemRemarks === 'null' ? null : (itemRemarks || null),
-    whStockQcPending: whStockQcPending || 0,
+    requestedqty: aqty,
+    whStock: whstockPacks,
+    itemRemarks: itemRemarks || null,
+    whStockQcPending: qcqty,
     estimatedDate: safeEstDateObj,
-    whId: whId || null,
-    cgmsclRemarks: computedRemarks === 'null' ? null : computedRemarks,
-    otherWhStock: computedOtherWhStock || 0,
-    status: stat,
-    approvedQty: aQty,
-    bookedQty: bQty,
-    bookedFlag: bFlag === 'null' ? null : bFlag,
-    stockInHand: computedStockInHand || 0,
-    entryDate: safeEntryDateObj,
-    cmhoapplieddttime: cmhoapplieddttime || null,
+    whId: whId || 0,
+    cgmsclRemarks: mcgmsclRemarks || null,
+    otherWhStock: mOtherWHstk || 0,
+    status: mStatus,
+    approvedQty: appqty,
+    bookedQty: bqty,
+    bookedFlag: mBookedFlag === 'null' ? null : mBookedFlag,
+    stockInHand: mStockInhand,
     nocItemId: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
   };
+
   const result = await db.execute(query, binds, { autoCommit: true });
   return result.outBinds.nocItemId[0];
 }
 
 /**
  * Update an existing NOC item row.
+ * Mirrors RowUpdating edit mode in CgmsclNocDHS.aspx.cs.
  */
 async function updateNocItem({ nocItemId, requestedqty, stockInHand, itemRemarks }) {
-  const fetchQuery = `SELECT WHSTOCK, STATUS FROM MASCGMSCNOCITEMS WHERE SR = :nocItemId`;
+  const fetchQuery = `
+    SELECT b.NOCID, b.ITEMID, b.WHSTOCK, b.WHSTOCKQCPENDING, b.OTHERWHSTOCK, b.STATUS, mi.UNITCOUNT
+    FROM MASCGMSCNOCITEMS b
+    INNER JOIN MASITEMS mi ON mi.ITEMID = b.ITEMID
+    WHERE b.SR = :nocItemId
+  `;
   const res = await db.execute(fetchQuery, { nocItemId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
   if (!res.rows || res.rows.length === 0) throw new Error("Item not found");
-  
-  const availStock = Number(res.rows[0].WHSTOCK) || 0;
-  const reqQty = Number(requestedqty) || 0;
-  
-  let bookedQty = 0;
-  let approvedQty = 0;
-  let bookedFlag = 'N';
-  let computedRemarks = null;
-  
-  if (availStock >= reqQty) {
-    bookedQty = reqQty;
-    approvedQty = 0;
-    bookedFlag = 'Y';
-    computedRemarks = "Fully Booked";
-  } else if (availStock > 0) {
-    bookedQty = availStock;
-    approvedQty = reqQty - availStock;
-    bookedFlag = 'Y';
-    computedRemarks = "Partially Booked";
-  } else {
-    bookedQty = 0;
-    approvedQty = reqQty;
-    bookedFlag = 'N';
-    computedRemarks = "Not Booked";
+
+  const row = res.rows[0];
+  const unitCount = Number(row.UNITCOUNT) || 1;
+  const mAbsQty = Number(requestedqty) || 0;
+  if (mAbsQty <= 0) throw new Error("Requested Qty must be greater than 0");
+  if (mAbsQty % unitCount !== 0) throw new Error(`Enter Quantity Should be Multiple of ${unitCount}`);
+
+  // WHSTOCK in DB is in packs, convert to Nos:
+  const mWHstock = (Number(row.WHSTOCK) || 0) * unitCount;
+  const a = mAbsQty;
+  const b = mWHstock;
+
+  if (mWHstock === 0 || a > b) {
+    throw new Error("Automatic NOC Process has been blocked, You may Contact/Letter to Central Store DHS with the Requirement.");
   }
 
-  if (res.rows[0].STATUS === 'Y') {
-    const now = new Date();
-    const dd = String(now.getDate()).padStart(2, '0');
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yyyy = now.getFullYear();
-    const currentDateFormatted = `${dd}/${mm}/${yyyy}`;
-    computedRemarks = `${bookedQty} qty is booked in WH, and NOC Granted for ${approvedQty} qty upto ${currentDateFormatted} ONLY.`;
-  }
+  const aqty = Math.floor(mAbsQty / unitCount);
+  const whstockPacks = Number(row.WHSTOCK) || 0;
+  const qcqty = Number(row.WHSTOCKQCPENDING) || 0;
+  const bqty = aqty;
+  const appqty = 0;
+  const mStockInhand = stockInHand !== undefined ? Number(stockInHand) : 0;
 
   const query = `
-    UPDATE MASCGMSCNOCITEMS
-    SET REQUESTEDQTY  = :requestedqty,
-        STOCKINHAND   = :stockInHand,
-        ITEMREMARKS   = :itemRemarks,
-        BOOKEDQTY     = :bookedQty,
-        APPROVEDQTY   = :approvedQty,
-        BOOKEDFLAG    = :bookedFlag,
-        CGMSCLREMARKS = :computedRemarks
+    UPDATE MASCGMSCNOCITEMS SET
+      REQUESTEDQTY  = :aqty,
+      WHSTOCK       = :whstockPacks,
+      ITEMREMARKS   = :itemRemarks,
+      WHSTOCKQCPENDING = :qcqty,
+      BOOKEDQTY     = :bqty,
+      APPROVEDQTY   = :appqty,
+      STOCKINHAND   = :stockInHand
     WHERE SR = :nocItemId
   `;
   await db.execute(
     query,
     { 
       nocItemId, 
-      requestedqty: reqQty, 
-      stockInHand: stockInHand !== undefined ? Number(stockInHand) || 0 : null,
+      aqty, 
+      whstockPacks,
       itemRemarks: itemRemarks === 'null' ? null : (itemRemarks || null),
-      bookedQty, 
-      approvedQty, 
-      bookedFlag, 
-      computedRemarks 
+      qcqty,
+      bqty, 
+      appqty, 
+      stockInHand: mStockInhand
     },
     { autoCommit: true }
   );
@@ -1513,7 +1765,7 @@ async function getItemStockDetails(facilityId, itemId, isMC = false) {
   } catch(e) {}
 
   // 6. Annual Indent Details
-  let balAiQty = 0, aiQty = 0, whIssueQty = 0, nocQty = 0;
+  let balAiQty = 0, aiQty = 0, whIssueQty = 0, nocQty = 0, tranIssueQty = 0, tranQtyRecv = 0;
 
   if (isMC) {
     const aiQueryMC = `
@@ -1543,7 +1795,7 @@ async function getItemStockDetails(facilityId, itemId, isMC = false) {
         inner join tbindentitems  tbi on tbi.indentid=tb.indentid
         inner join tboutwards  tbo on tbo.indentitemid=tbi.indentitemid
         where tb.facilityid=:facilityId  and tb.status='C' and tbi.itemid=:itemId
-        and tb.indentdate between (select startdate from masaccyearsettings  where accyrsetid=(select accyrsetid from masaccyearsettings where sysdate between startdate and enddate) ) and (select enddate from masaccyearsettings  where accyrsetid=(select accyrsetid from masaccyearsettings where sysdate between startdate and enddate) )
+        and tb.indentdate between (select startdate from masaccyearsettings where sysdate between startdate and enddate and rownum = 1) and (select enddate from masaccyearsettings where sysdate between startdate and enddate and rownum = 1)
         group by tb.facilityid,tbi.itemid 
       ) Iss on Iss.itemid=m.itemid
       left outer join 
@@ -1551,7 +1803,7 @@ async function getItemStockDetails(facilityId, itemId, isMC = false) {
         select mn.facilityid,mni.itemid,sum(mni.approvedqty) NOcQty from mascgmscnoc mn 
         inner join mascgmscnocitems  mni on mni.nocid=mn.nocid
         where mn.status='C'  and nvl(mni.ISCANCEL,'N')='N' and  facilityid=:facilityId and mni.itemid=:itemId
-        and mn.nocdate between  (select startdate from masaccyearsettings  where accyrsetid=(select accyrsetid from masaccyearsettings where sysdate between startdate and enddate) ) and (select enddate from masaccyearsettings  where accyrsetid=(select accyrsetid from masaccyearsettings where sysdate between startdate and enddate) )
+        and mn.nocdate between (select startdate from masaccyearsettings where sysdate between startdate and enddate and rownum = 1) and (select enddate from masaccyearsettings where sysdate between startdate and enddate and rownum = 1)
         group by mn.facilityid,mni.itemid 
       ) Noc on Noc.itemid=m.itemid where m.itemid=:itemId
     `;
@@ -1565,24 +1817,83 @@ async function getItemStockDetails(facilityId, itemId, isMC = false) {
       }
     } catch(e) {}
   } else {
-    const aiQuery = `
-        SELECT
-          nvl(a.AIPENDINGNOS, 0) as BALAIQTY,
-          nvl(a.APPROVEDQTYNOS, 0) as AIQTY,
-          nvl(a.CGMSCISSUENOS, 0) as WHISSUEQTY,
-          nvl(a.NOCQTYNOS, 0) as NOCQTY
-        FROM tb_dhsfacai a
-        WHERE a.FACILITYID = :facilityId AND a.ITEMID = :itemId
+    const aiQueryDHS = `
+      select nvl(Indentqty,0) Indentqty,
+             nvl(issueqty,0)*nvl(m.unitcount,1) issueqty,
+             nvl(Noc.NOcQty,0)*nvl(m.unitcount,1) NOcQty,
+             (Indentqty+nvl(ITR.TranQtyRecv,0)) as totRecv,
+             ((((nvl(issueqty,0)+nvl(Noc.NOcQty,0)))*nvl(m.unitcount,1) )+nvl(ITI.TranIssueQty,0)) as toIssue,
+             nvl((nvl(Indentqty,0)+nvl(ITR.TranQtyRecv,0))-(( ( nvl(issueqty,0)+nvl(Noc.NOcQty,0) )*nvl(m.unitcount,1) )+nvl(ITI.TranIssueQty,0)),0) BalIndentqty,
+             nvl(ITR.TranQtyRecv,0) as TranQtyRecv,
+             nvl(ITI.TranIssueQty,0) as TranIssueQty 
+      from masitems m
+      left outer join (
+        select ai.itemid, round(nvl(ai.cmhodistqty,0),0) as Indentqty, nvl(m.unitcount,1) unitcount
+        from masanualindent ma
+        inner join anualindent ai on ai.indentid=ma.indentid
+        inner join masitems m on m.itemid=ai.itemid
+        where ai.status='C' and ma.status='C' and ai.itemid = :itemId and ai.facilityid = :facilityId  
+          and ai.accyrsetid in (select accyrsetid from masaccyearsettings where sysdate between startdate and enddate)
+          and nvl(ai.cmhodistqty,0)>0 
+      ) II on II.itemid=m.itemid
+      left outer join 
+      (
+        select tb.facilityid, tbi.itemid, sum(tbo.issueqty) issueqty 
+        from tbindents tb
+        inner join tbindentitems tbi on tbi.indentid=tb.indentid
+        inner join tboutwards tbo on tbo.indentitemid=tbi.indentitemid
+        where tb.facilityid = :facilityId and tb.status='C' and tbi.itemid = :itemId
+          and tb.indentdate between (select startdate from masaccyearsettings where sysdate between startdate and enddate and rownum = 1) 
+                                and (select enddate from masaccyearsettings where sysdate between startdate and enddate and rownum = 1)
+        group by tb.facilityid, tbi.itemid 
+      ) Iss on Iss.itemid = :itemId
+      left outer join 
+      (
+        select mn.facilityid, mni.itemid, sum(mni.approvedqty) NOcQty 
+        from mascgmscnoc mn 
+        inner join mascgmscnocitems mni on mni.nocid=mn.nocid
+        where mn.status='C' and nvl(mni.ISCANCEL,'N')='N' and mn.facilityid = :facilityId and mni.itemid = :itemId
+          and mn.nocdate between (select startdate from masaccyearsettings where sysdate between startdate and enddate and rownum = 1) 
+                             and (select enddate from masaccyearsettings where sysdate between startdate and enddate and rownum = 1)
+        group by mn.facilityid, mni.itemid 
+      ) Noc on Noc.itemid = :itemId
+      left outer join 
+      (
+        select itemid, sum(nvl(transferqty,0)) as TranQtyRecv
+        from (
+          select ai.transferqty, ai.itemid, a.facilityid
+          from MASFACILITYAITRANSFER a
+          inner join facilityaitransferitems ai on ai.aitransferid=a.aitransferid
+          where a.status='C' and a.accyrsetid in (select accyrsetid from masaccyearsettings where sysdate between startdate and enddate)
+            and a.facilityid = :facilityId and itemid = :itemId 
+        ) group by itemid
+      ) ITR on ITR.itemid = :itemId 
+      left outer join 
+      (
+        select itemid, sum(nvl(transferqty,0)) as TranIssueQty
+        from (
+          select ai.transferqty, ai.itemid, ai.fromfacilityid as facilityid
+          from MASFACILITYAITRANSFER a
+          inner join facilityaitransferitems ai on ai.aitransferid=a.aitransferid
+          where a.status='C' and a.accyrsetid in (select accyrsetid from masaccyearsettings where sysdate between startdate and enddate)
+            and ai.fromfacilityid = :facilityId and itemid = :itemId 
+        ) group by itemid
+      ) ITI on ITI.itemid = :itemId 
+      where m.itemid = :itemId
     `;
     try {
-      const aiRes = await db.execute(aiQuery, { facilityId, itemId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      const aiRes = await db.execute(aiQueryDHS, { facilityId, itemId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
       if (aiRes.rows.length > 0) {
-        balAiQty = aiRes.rows[0].BALAIQTY;
-        aiQty = aiRes.rows[0].AIQTY;
-        whIssueQty = aiRes.rows[0].WHISSUEQTY;
-        nocQty = aiRes.rows[0].NOCQTY;
+        balAiQty = Number(aiRes.rows[0].BALINDENTQTY) || 0;
+        aiQty = Number(aiRes.rows[0].INDENTQTY) || 0;
+        whIssueQty = Number(aiRes.rows[0].ISSUEQTY) || 0;
+        nocQty = Number(aiRes.rows[0].NOCQTY) || 0;
+        tranIssueQty = Number(aiRes.rows[0].TRANISSUEQTY) || 0;
+        tranQtyRecv = Number(aiRes.rows[0].TRANQTYRECV) || 0;
       }
-    } catch(e) {}
+    } catch(e) {
+      console.error('Error fetching DHS AI details:', e);
+    }
   }
 
   // 7. Other WH Stock
@@ -1620,11 +1931,42 @@ async function getItemStockDetails(facilityId, itemId, isMC = false) {
       otherWhStock = parseInt(otherWhRes.rows.length > 0 ? otherWhRes.rows[0].STK : 0) * unitCount;
     } catch(e) { }
   } else {
+    const otherWhQueryDHS = `
+      select nvl(sum(Ready_QC),0) stk from ( select (case when sum( A.ReadyForIssue)>0 then sum( A.ReadyForIssue) else 0 end) Ready_QC
+      from 
+      ( 
+        select w.WAREHOUSENAME,mi.ITEMCODE, b.inwno,mi.ITEMNAME , mi.strength1 ,mi.unit as SKU , 
+        (case when b.qastatus ='1' then (nvl(b.absrqty,0) - nvl(iq.issueqty,0)) * nvl(mi.unitcount,1) else (case when mi.Qctest ='N' then (nvl(b.absrqty,0) - nvl(iq.issueqty,0) ) * nvl(mi.unitcount,1) end ) end ) ReadyForIssue, 
+        case when mi.qctest='N' then 0 else (case when b.qastatus = 0 or b.qastatus = 3 then (nvl(b.absrqty,0)- nvl(iq.issueqty,0)) * nvl(mi.unitcount,1) end) end Pending 
+        from tbreceiptbatches b 
+        inner join tbreceiptitems i on b.receiptitemid=i.receiptitemid 
+        inner join tbreceipts t on t.receiptid=i.receiptid 
+        inner join masitems mi on mi.itemid=i.itemid 
+        inner join MASWAREHOUSES w on w.warehouseid=t.warehouseid 
+        left outer join 
+        ( 
+          select tb.warehouseid,tbi.itemid,tbo.inwno,sum(nvl(tbo.issueqty,0)) issueqty 
+          from tboutwards tbo, tbindentitems tbi , tbindents tb 
+          where tbi.itemid = :itemId and tbo.indentitemid=tbi.indentitemid and tbi.indentid=tb.indentid 
+            and tb.notindpdmis is null and tbo.notindpdmis is null and tbi.notindpdmis is null 
+            and tb.warehouseid not in ( select warehouseid from masfacilitywh where facilityid= :facilityId)
+          group by tbi.itemid,tb.warehouseid,tbo.inwno 
+        ) iq on b.inwno = Iq.inwno and iq.itemid=i.itemid and iq.warehouseid=t.warehouseid 
+        Where T.Status = 'C' and (b.ExpDate >= SysDate or nvl(b.ExpDate,SysDate) >= SysDate) And (b.Whissueblock = 0 or b.Whissueblock is null) 
+          and mi.itemid = :itemId and t.notindpdmis is null and b.notindpdmis is null and i.notindpdmis is null 
+          and w.warehouseid not in ( select warehouseid from masfacilitywh where facilityid= :facilityId)
+      ) A 
+      group by WAREHOUSENAME,A.itemcode,A.ItemName, A.strength1,A.SKU 
+      having sum(nvl(A.ReadyForIssue,0)) >0 or sum(nvl(A.Pending,0)) >0 )
+    `;
     try {
-      const otherWhQuery = `Select NVL(cgmscl.getOtherStockWH1(:itemId, :whId), '0') as OtherWHStock from dual`;
-      const otherWhRes = await db.execute(otherWhQuery, { itemId, whId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-      otherWhStock = parseInt(otherWhRes.rows.length > 0 ? otherWhRes.rows[0].OTHERWHSTOCK : 0) * unitCount;
-    } catch(e) { }
+      const otherWhRes = await db.execute(otherWhQueryDHS, { itemId, facilityId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+      if (otherWhRes.rows.length > 0) {
+        otherWhStock = Number(otherWhRes.rows[0].STK) || 0;
+      }
+    } catch(e) {
+      console.error('Error fetching DHS other WH stock:', e);
+    }
   }
 
   return {
@@ -1636,6 +1978,8 @@ async function getItemStockDetails(facilityId, itemId, isMC = false) {
     whIssueQty,
     nocQty,
     balAiQty,
+    tranIssueQty,
+    tranQtyRecv,
     otherWhStock,
     unitCount,
     strength,
@@ -1668,4 +2012,7 @@ module.exports = {
   getAgainstApprovalIndentItemsForFacility,
   getOtherItemForFacility,
   getItemStockDetails,
+  checkNocCancel,
+  checkItemIsActive,
+  isItemExist,
 };

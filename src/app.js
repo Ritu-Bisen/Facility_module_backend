@@ -163,6 +163,11 @@ app.use('/api/online-transfer-items', require('./routes/onlineTransferItemsRoute
 app.use('/api/noc-approval', require('./routes/nocApprovalRoutes'));
 app.use('/api/stock-register', require('./routes/stockRegisterRoutes'));
 app.use('/api/annual-indent', require('./routes/annualIndentRoutes'));
+app.use('/api/dh-annual-indent', require('./routes/dhAnnualIndentRoutes'));
+app.use('/api/non-edl-annual-indent', require('./routes/nonEdlAnnualIndentRoutes'));
+app.use('/api/reagent-non-edl-indent', require('./routes/reagentNonEdlIndentRoutes'));
+app.use('/api/ayush-annual-indent', require('./routes/ayushAnnualIndentRoutes'));
+app.use('/api/medical-college-ai', require('./routes/medicalCollegeAiRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/local-purchase', require('./routes/localPurchaseRoutes'));
 app.use('/api/ayush-local-purchase', require('./routes/ayushLocalPurchaseRoutes'));

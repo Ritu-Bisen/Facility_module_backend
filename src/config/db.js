@@ -1,7 +1,8 @@
 const oracledb = require('oracledb');
 const path = require('path');
 const logger = require('../utils/logger');
-require('dotenv').config();
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+require('dotenv').config(); // Fallback to current working directory .env if any
 
 let pool = null;
 
