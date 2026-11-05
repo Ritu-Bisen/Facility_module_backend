@@ -7,6 +7,7 @@ const nonEdlAnnualIndentModel = require('./nonEdlAnnualIndentModel');
 const reagentNonEdlIndentModel = require('./reagentNonEdlIndentModel');
 const ayushAnnualIndentModel = require('./ayushAnnualIndentModel');
 const medicalCollegeAiModel = require('./medicalCollegeAiModel');
+const chcAnnualIndentModel = require('./chcAnnualIndentModel');
 
 // Fetch items for the dropdown
 async function getIndentItems(facilityId) {
@@ -1295,7 +1296,9 @@ async function getIndentPdfItems(indentId) {
       itemId: r.ITEMID || r.itemid,
       itemCode: r.ITEMCODE || r.itemcode || '',
       itemName: r.ITEMNAME || r.itemname || '',
-      strength1: r.STRENGTH1 || r.strength1 || '',
+      strength: r.STRENGTH1 || r.strength1 || r.STRENGTH || r.strength || '',
+      strength1: r.STRENGTH1 || r.strength1 || r.STRENGTH || r.strength || '',
+      STRENGTH1: r.STRENGTH1 || r.strength1 || r.STRENGTH || r.strength || '',
       unit: r.UNIT || r.unit || 'NOS',
       packingQty: r.PACKINGQTY || r.packingqty || 1,
       itemTypeCode: r.ITEMTYPECODE || r.itemtypecode || '',
@@ -1405,5 +1408,15 @@ module.exports = {
   getMedicalCollegeAiDropdowns: medicalCollegeAiModel.getMedicalCollegeAiDropdowns,
   getMedicalCollegeAiReport: medicalCollegeAiModel.getMedicalCollegeAiReport,
   getMcAiVsIssuanceDropdowns: medicalCollegeAiModel.getMcAiVsIssuanceDropdowns,
-  getMcAiVsIssuanceReport: medicalCollegeAiModel.getMcAiVsIssuanceReport
+  getMcAiVsIssuanceReport: medicalCollegeAiModel.getMcAiVsIssuanceReport,
+
+  // Re-exported from CHC Approval model
+  getChcFinYears: chcAnnualIndentModel.getChcFinYears,
+  getChcDrugs: chcAnnualIndentModel.getChcDrugs,
+  getChcFacilityItems: chcAnnualIndentModel.getChcFacilityItems,
+  approveChcItem: chcAnnualIndentModel.approveChcItem,
+  approveChcBatchItems: chcAnnualIndentModel.approveChcBatchItems,
+  getChcDispatchDetails: chcAnnualIndentModel.getChcDispatchDetails,
+  saveChcDispatchDetails: chcAnnualIndentModel.saveChcDispatchDetails,
+  freezeChcIndent: chcAnnualIndentModel.freezeChcIndent
 };

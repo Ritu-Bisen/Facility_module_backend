@@ -6,6 +6,7 @@ const nonEdlAnnualIndentController = require('./nonEdlAnnualIndentController');
 const reagentNonEdlIndentController = require('./reagentNonEdlIndentController');
 const ayushAnnualIndentController = require('./ayushAnnualIndentController');
 const medicalCollegeAiController = require('./medicalCollegeAiController');
+const chcAnnualIndentController = require('./chcAnnualIndentController');
 
 async function getItems(req, res) {
   try {
@@ -325,5 +326,15 @@ module.exports = {
   getMedicalCollegeAiReport: medicalCollegeAiController.getMedicalCollegeAiReport,
   getMcAiVsIssuanceDropdowns: medicalCollegeAiController.getMcAiVsIssuanceDropdowns,
   getMcAiVsIssuanceReport: medicalCollegeAiController.getMcAiVsIssuanceReport,
-  getMcHospitalAiVsIssuance: medicalCollegeAiController.getMcHospitalAiVsIssuance
+  getMcHospitalAiVsIssuance: medicalCollegeAiController.getMcHospitalAiVsIssuance,
+
+  // CHC Approval Controllers
+  getChcFinYears: chcAnnualIndentController.getFinYears,
+  getChcDrugs: chcAnnualIndentController.getDrugs,
+  getChcFacilityItems: chcAnnualIndentController.getFacilityItems,
+  approveChcItem: chcAnnualIndentController.approveItem,
+  approveChcBatchItems: chcAnnualIndentController.approveBatchItems,
+  getChcDispatchDetails: chcAnnualIndentController.getDispatchDetails,
+  saveChcDispatchDetails: chcAnnualIndentController.saveDispatchDetails,
+  freezeChcIndent: chcAnnualIndentController.freezeIndent
 };

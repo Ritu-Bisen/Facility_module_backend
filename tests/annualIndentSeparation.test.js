@@ -129,7 +129,59 @@ test('Separated Annual Indent Modules Verification', async (t) => {
     assert.ok(routes, 'routes exist');
   });
 
-  await t.test('6. Main app and Core annual indent backward compatibility', () => {
+  await t.test('6. CHC Approval of Forwarded Indents Model, Controller, and Routes load properly', () => {
+    const model = require('../src/models/chcAnnualIndentModel');
+    const controller = require('../src/controllers/chcAnnualIndentController');
+    const routes = require('../src/routes/chcAnnualIndentRoutes');
+
+    assert.ok(typeof model.getChcFinYears === 'function', 'model.getChcFinYears exists');
+    assert.ok(typeof model.getChcDrugs === 'function', 'model.getChcDrugs exists');
+    assert.ok(typeof model.getChcFacilityItems === 'function', 'model.getChcFacilityItems exists');
+    assert.ok(typeof model.approveChcItem === 'function', 'model.approveChcItem exists');
+    assert.ok(typeof model.approveChcBatchItems === 'function', 'model.approveChcBatchItems exists');
+    assert.ok(typeof model.getChcDispatchDetails === 'function', 'model.getChcDispatchDetails exists');
+    assert.ok(typeof model.saveChcDispatchDetails === 'function', 'model.saveChcDispatchDetails exists');
+    assert.ok(typeof model.freezeChcIndent === 'function', 'model.freezeChcIndent exists');
+
+    assert.ok(typeof controller.getChcFinYears === 'function', 'controller.getChcFinYears exists');
+    assert.ok(typeof controller.getChcDrugs === 'function', 'controller.getChcDrugs exists');
+    assert.ok(typeof controller.getChcFacilityItems === 'function', 'controller.getChcFacilityItems exists');
+    assert.ok(typeof controller.approveChcItem === 'function', 'controller.approveChcItem exists');
+    assert.ok(typeof controller.approveChcBatchItems === 'function', 'controller.approveChcBatchItems exists');
+    assert.ok(typeof controller.getChcDispatchDetails === 'function', 'controller.getChcDispatchDetails exists');
+    assert.ok(typeof controller.saveChcDispatchDetails === 'function', 'controller.saveChcDispatchDetails exists');
+    assert.ok(typeof controller.freezeChcIndent === 'function', 'controller.freezeChcIndent exists');
+    assert.ok(routes, 'routes exist');
+  });
+
+  await t.test('7. DAO Approval of Forwarded Indent of Ayush Facilities Model, Controller, and Routes load properly', () => {
+    const model = require('../src/models/daoAnnualIndentModel');
+    const controller = require('../src/controllers/daoAnnualIndentController');
+    const routes = require('../src/routes/daoAnnualIndentRoutes');
+
+    assert.ok(typeof model.getDaoFinYears === 'function', 'model.getDaoFinYears exists');
+    assert.ok(typeof model.getDaoCategories === 'function', 'model.getDaoCategories exists');
+    assert.ok(typeof model.getDaoDrugs === 'function', 'model.getDaoDrugs exists');
+    assert.ok(typeof model.getDaoFacilityItems === 'function', 'model.getDaoFacilityItems exists');
+    assert.ok(typeof model.approveDaoItem === 'function', 'model.approveDaoItem exists');
+    assert.ok(typeof model.approveDaoBatchItems === 'function', 'model.approveDaoBatchItems exists');
+    assert.ok(typeof model.getDaoDispatchDetails === 'function', 'model.getDaoDispatchDetails exists');
+    assert.ok(typeof model.saveDaoDispatchDetails === 'function', 'model.saveDaoDispatchDetails exists');
+    assert.ok(typeof model.freezeDaoIndent === 'function', 'model.freezeDaoIndent exists');
+
+    assert.ok(typeof controller.getFinYears === 'function', 'controller.getFinYears exists');
+    assert.ok(typeof controller.getCategories === 'function', 'controller.getCategories exists');
+    assert.ok(typeof controller.getDrugs === 'function', 'controller.getDrugs exists');
+    assert.ok(typeof controller.getFacilityItems === 'function', 'controller.getFacilityItems exists');
+    assert.ok(typeof controller.approveItem === 'function', 'controller.approveItem exists');
+    assert.ok(typeof controller.approveBatchItems === 'function', 'controller.approveBatchItems exists');
+    assert.ok(typeof controller.getDispatchDetails === 'function', 'controller.getDispatchDetails exists');
+    assert.ok(typeof controller.saveDispatchDetails === 'function', 'controller.saveDispatchDetails exists');
+    assert.ok(typeof controller.freezeIndent === 'function', 'controller.freezeIndent exists');
+    assert.ok(routes, 'routes exist');
+  });
+
+  await t.test('8. Main app and Core annual indent backward compatibility', () => {
     const app = require('../src/app');
     assert.ok(app, 'app loaded');
 
@@ -142,12 +194,14 @@ test('Separated Annual Indent Modules Verification', async (t) => {
     assert.ok(typeof coreModel.getDownloadReagentNonEdlFormatData === 'function', 'Reagent re-exported on core model');
     assert.ok(typeof coreModel.getAyushDownloadFormatData === 'function', 'Ayush re-exported on core model');
     assert.ok(typeof coreModel.getMedicalCollegeAiReport === 'function', 'Medical College AI re-exported on core model');
+    assert.ok(typeof coreModel.getChcDrugs === 'function', 'CHC re-exported on core model');
 
     assert.ok(typeof coreController.getItems === 'function');
     assert.ok(typeof coreController.getDownloadNonEdlFormatData === 'function', 'Non-EDL re-exported on core controller');
     assert.ok(typeof coreController.getDownloadReagentNonEdlFormatData === 'function', 'Reagent re-exported on core controller');
     assert.ok(typeof coreController.getAyushDownloadFormatData === 'function', 'Ayush re-exported on core controller');
     assert.ok(typeof coreController.getMedicalCollegeAiReport === 'function', 'Medical College AI re-exported on core controller');
+    assert.ok(typeof coreController.getChcDrugs === 'function', 'CHC re-exported on core controller');
     assert.ok(coreRoutes, 'core routes loaded');
   });
 });

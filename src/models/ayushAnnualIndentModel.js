@@ -989,17 +989,19 @@ async function getDaoStatusReport(facilityId, finYearId, categoryId) {
     const fyId = Number(finYearId) || 547;
     const catId = Number(categoryId) || 1;
 
-    let whereclause = '';
-    if (catId === 3 || catId === 4) {
-      whereclause = ' and fta.FACTYPEID in (8,5,2) ';
-    } else if (catId === 5 || catId === 6) {
-      whereclause = ' and fta.FACTYPEID in (2) ';
-    } else if (catId === 7) {
-      whereclause = ' and fta.FACTYPEID in (2,13) ';
-    } else if (catId === 8) {
-      whereclause = ' ';
-    } else {
-      whereclause = ' and fta.FACTYPEID not in (5,13) ';
+    let wherecluase = '';
+    const catStr = String(catId);
+
+    if (catStr === '3' || catStr === '4') {
+      wherecluase += ' and fta.FACTYPEID in (2,5,8)';
+    } else if (catStr === '5' || catStr === '6') {
+      wherecluase += ' and fta.FACTYPEID in (2,9,4)';
+    } else if (catStr === '7') {
+      wherecluase += ' and fta.FACTYPEID in (11,13)';
+    } else if (catStr === '8') {
+      wherecluase += ' and fta.FACTYPEID not in (1,11,13,14) ';
+    } else if (catStr === '1' || catStr === '2') {
+      wherecluase += ' and fta.FACTYPEID not in (5,13,8,9,14,4,11)';
     }
 
     const query = `
@@ -1010,7 +1012,11 @@ async function getDaoStatusReport(facilityId, finYearId, categoryId) {
                else 'Indent Not Uploaded' 
              end as status,
              ai.AIcategoryid,
-             nvl(sc.catname || ' (' || mc.categoryname || ')', (select sc2.catname || ' (' || mc2.categoryname || ')' from MasSubItemCategory sc2 inner join masitemcategories mc2 on mc2.categoryid=sc2.categoryid where sc2.subcatid=:catId)) as categoryname
+             coalesce(
+               sc.catname || ' (' || mc.categoryname || ')', 
+               (select sc2.catname || ' (' || mc2.categoryname || ')' from MasSubItemCategory sc2 inner join masitemcategories mc2 on mc2.categoryid=sc2.categoryid where sc2.subcatid=:catId),
+               ''
+             ) as categoryname
       from masfacilities fm  
       left outer join (
         select facilityid, status, AIcategoryid 
@@ -1022,12 +1028,13 @@ async function getDaoStatusReport(facilityId, finYearId, categoryId) {
       inner join masfacilitytypeayush fta on fta.FACTYPEID = fm.AYFACTYPEID 
       left outer join MasSubItemCategory sc on sc.SUBCATID = ai.AIcategoryid 
       left outer join masitemcategories mc on mc.categoryid = sc.categoryid
-      where fm.isactive = 1 
-        ${whereclause}
+      where 1=1 
+        and fm.isactive = 1 
+        ${wherecluase}
         and fm.facilitytypeid = 371 
         and fm.districtid in (select districtid from masfacilities where facilityid = :facId) 
         and fm.facilityid not in (:facId) 
-      order by ft.orderdp, fm.facilityname
+      order by ft.orderdp
     `;
 
     const res = await db.execute(query, { facId, fyId, catId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
@@ -1161,7 +1168,9 @@ async function getAyushIndentPdfItems(indentId) {
       itemId: r.ITEMID || r.itemid,
       itemCode: r.ITEMCODE || r.itemcode || '',
       itemName: r.ITEMNAME || r.itemname || '',
-      strength1: r.STRENGTH1 || r.strength1 || '',
+      strength: r.STRENGTH1 || r.strength1 || r.STRENGTH || r.strength || '',
+      strength1: r.STRENGTH1 || r.strength1 || r.STRENGTH || r.strength || '',
+      STRENGTH1: r.STRENGTH1 || r.strength1 || r.STRENGTH || r.strength || '',
       unit: r.UNIT || r.unit || 'NOS',
       packingQty: r.PACKINGQTY || r.packingqty || 1,
       itemTypeCode: r.ITEMTYPECODE || r.itemtypecode || '',

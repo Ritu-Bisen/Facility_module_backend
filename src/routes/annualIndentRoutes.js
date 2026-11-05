@@ -6,6 +6,7 @@ const nonEdlAnnualIndentController = require('../controllers/nonEdlAnnualIndentC
 const reagentNonEdlIndentController = require('../controllers/reagentNonEdlIndentController');
 const ayushAnnualIndentController = require('../controllers/ayushAnnualIndentController');
 const medicalCollegeAiController = require('../controllers/medicalCollegeAiController');
+const daoAnnualIndentController = require('../controllers/daoAnnualIndentController');
 const { authenticate } = require('../middleware/authMiddleware');
 
 router.use(authenticate);
@@ -66,6 +67,15 @@ router.post('/ayush/create/freeze', ayushAnnualIndentController.freezeAyushInden
 router.delete('/ayush/create/indent', ayushAnnualIndentController.deleteAyushIndent);
 
 // DAO (District AYUSH Officer) Routes
+router.get('/dao/fin-years', daoAnnualIndentController.getFinYears);
+router.get('/dao/categories', daoAnnualIndentController.getCategories);
+router.get('/dao/drugs', daoAnnualIndentController.getDrugs);
+router.get('/dao/facility-items', daoAnnualIndentController.getFacilityItems);
+router.post('/dao/approve-item', daoAnnualIndentController.approveItem);
+router.post('/dao/approve-batch', daoAnnualIndentController.approveBatchItems);
+router.get('/dao/dispatch-details', daoAnnualIndentController.getDispatchDetails);
+router.post('/dao/dispatch-details', daoAnnualIndentController.saveDispatchDetails);
+router.post('/dao/freeze', daoAnnualIndentController.freezeIndent);
 router.get('/dao/forwarded-list', ayushAnnualIndentController.getDaoForwardedList);
 router.get('/dao/detail-items', ayushAnnualIndentController.getDaoDetailItems);
 router.get('/dao/approval-list', ayushAnnualIndentController.getDaoApprovalList);
@@ -108,5 +118,18 @@ router.get('/medical-college-ai', medicalCollegeAiController.getMedicalCollegeAi
 router.get('/mc-ai-vs-issuance', medicalCollegeAiController.getMcHospitalAiVsIssuance);
 router.get('/mc-ai-vs-issuance/dropdowns', medicalCollegeAiController.getMcAiVsIssuanceDropdowns);
 router.get('/mc-ai-vs-issuance/report', medicalCollegeAiController.getMcAiVsIssuanceReport);
+
+// ==========================================
+// 7. CHC Approval of Forwarded Indents of PHCs
+// ==========================================
+const chcAnnualIndentController = require('../controllers/chcAnnualIndentController');
+router.get('/chc/fin-years', chcAnnualIndentController.getFinYears);
+router.get('/chc/drugs', chcAnnualIndentController.getDrugs);
+router.get('/chc/items', chcAnnualIndentController.getFacilityItems);
+router.post('/chc/approve', chcAnnualIndentController.approveItem);
+router.post('/chc/approve-batch', chcAnnualIndentController.approveBatchItems);
+router.get('/chc/dispatch-details', chcAnnualIndentController.getDispatchDetails);
+router.post('/chc/save-dispatch', chcAnnualIndentController.saveDispatchDetails);
+router.post('/chc/freeze', chcAnnualIndentController.freezeIndent);
 
 module.exports = router;
