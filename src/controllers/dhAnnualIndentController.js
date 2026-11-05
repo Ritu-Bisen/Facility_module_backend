@@ -119,9 +119,9 @@ async function deleteDhIndent(req, res) {
 
 async function getDhDownloadFormatData(req, res) {
   try {
-    const facilityId = req.query.facilityId || req.user?.facilityId || 22595;
+    const facilityId = req.query.facilityId || req.user?.facilityId || req.user?.facilityid || req.user?.FACILITYID || 23393;
     const categoryId = req.query.categoryId || 0;
-    const facilityTypeId = req.query.facilityTypeId || req.user?.facilityTypeId || req.user?.facilityTypeID;
+    const facilityTypeId = req.query.facilityTypeId || req.user?.facilityTypeId || req.user?.facilityTypeID || req.user?.FACILITYTYPEID;
     const data = await dhAnnualIndentModel.getDhDownloadFormatData(facilityId, categoryId, facilityTypeId);
     res.json({ success: true, data });
   } catch (error) {
