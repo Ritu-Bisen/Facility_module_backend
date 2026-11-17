@@ -59,3 +59,4 @@ WHERE fm.isactive = 1
   AND fm.facilityid NOT IN (23633)
 
 ORDER BY ft.orderdp, fm.facilityname;
+sacc

@@ -9,7 +9,7 @@ const oracledb = require('oracledb');
 async function getAyushUploadForwardFinYears() {
   try {
     const query = `
-      select accyrsetid, accyear,
+      select accyrsetid, accyear, shaccyear,
              case when sysdate between startdate and enddate then 'Y' else 'N' end as is_current
       from masaccyearsettings 
       where accyrsetid > 537 
@@ -19,6 +19,7 @@ async function getAyushUploadForwardFinYears() {
     return (result.rows || []).map(r => ({
       accYrSetId: r.ACCYRSETID || r.accYrSetId,
       accYear: r.ACCYEAR || r.accYear,
+      shAccYear: r.SHACCYEAR || r.shaccyear,
       isCurrent: (r.IS_CURRENT || r.is_current) === 'Y'
     }));
   } catch (error) {
@@ -138,8 +139,7 @@ async function getAyushUploadForwardList(facilityId, finYearId, status) {
 async function getAyushDownloadFormatData(facilityId, subCatId) {
   try {
     const usrFacilityID = Number(facilityId) || 29609;
-    const factypeid = String(subCatId || '8').trim();
-    const whereclause = factypeid === '8' ? '' : " and nvl(m.isedl2021,'N')='Y'";
+    const targetSubCatId = Number(subCatId) || 8;
 
     const query = `
       select 0 SlNo, m.itemcode,
@@ -195,12 +195,12 @@ async function getAyushDownloadFormatData(facilityId, subCatId) {
           ) i
           group by edlitemcode
       ) Consumption on Consumption.itemcode = m.itemcode
-      where sc.subcatid in (${Number(factypeid) || 8})
-        and m.isfreezed is null ${whereclause}
+      where sc.subcatid in (:targetSubCatId)
+        and m.isfreezed is null
       order by m.ayushAIOrder
     `;
 
-    const result = await db.execute(query, { usrFacilityID }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const result = await db.execute(query, { usrFacilityID, targetSubCatId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const rows = result.rows || [];
     return rows.map((r, idx) => ({
       slNo: idx + 1,

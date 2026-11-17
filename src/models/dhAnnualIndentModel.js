@@ -5,7 +5,7 @@ const oracledb = require('oracledb');
 async function getDhUploadForwardFinYears() {
   try {
     const query = `
-      select accyrsetid, accyear,
+      select accyrsetid, accyear, shaccyear,
              case when sysdate between startdate and enddate then 'Y' else 'N' end as is_current
       from masaccyearsettings 
       where accyrsetid > 537 
@@ -15,6 +15,7 @@ async function getDhUploadForwardFinYears() {
     return (result.rows || []).map(r => ({
       accYrSetId: r.ACCYRSETID || r.accYrSetId,
       accYear: r.ACCYEAR || r.accYear,
+      shAccYear: r.SHACCYEAR || r.shaccyear,
       isCurrent: (r.IS_CURRENT || r.is_current) === 'Y'
     }));
   } catch (error) {
