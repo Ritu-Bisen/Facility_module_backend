@@ -165,6 +165,7 @@ app.use('/api/stock-register', require('./routes/stockRegisterRoutes'));
 app.use('/api/annual-indent', require('./routes/annualIndentRoutes'));
 app.use('/api/dh-annual-indent', require('./routes/dhAnnualIndentRoutes'));
 app.use('/api/chc-annual-indent', require('./routes/chcAnnualIndentRoutes'));
+app.use('/api/cmho-annual-indent', require('./routes/cmhoAnnualIndentRoutes'));
 app.use('/api/dao-annual-indent', require('./routes/daoAnnualIndentRoutes'));
 app.use('/api/non-edl-annual-indent', require('./routes/nonEdlAnnualIndentRoutes'));
 app.use('/api/reagent-non-edl-indent', require('./routes/reagentNonEdlIndentRoutes'));

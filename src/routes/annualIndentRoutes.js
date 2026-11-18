@@ -7,6 +7,8 @@ const reagentNonEdlIndentController = require('../controllers/reagentNonEdlInden
 const ayushAnnualIndentController = require('../controllers/ayushAnnualIndentController');
 const medicalCollegeAiController = require('../controllers/medicalCollegeAiController');
 const daoAnnualIndentController = require('../controllers/daoAnnualIndentController');
+const cmhoAnnualIndentController = require('../controllers/cmhoAnnualIndentController');
+const chcAnnualIndentController = require('../controllers/chcAnnualIndentController');
 const { authenticate } = require('../middleware/authMiddleware');
 
 router.use(authenticate);
@@ -84,6 +86,14 @@ router.post('/dao/approve', ayushAnnualIndentController.approveDaoIndent);
 router.get('/dao/status-report', ayushAnnualIndentController.getDaoStatusReport);
 router.get('/dao/item-wise-ai', ayushAnnualIndentController.getDaoItemWiseAi);
 
+// CMHO Annual Indent Routes
+router.get('/cmho/fin-years', cmhoAnnualIndentController.getFinYears);
+router.get('/cmho/status-report', cmhoAnnualIndentController.getStatusReport);
+
+// CHC Annual Indent Routes
+router.get('/chc/fin-years', chcAnnualIndentController.getFinYears);
+router.get('/chc/status-report', chcAnnualIndentController.getStatusReport);
+
 // ==========================================
 // 4. Non-EDL Annual Indent Routes (Delegated)
 // ==========================================
@@ -122,7 +132,6 @@ router.get('/mc-ai-vs-issuance/report', medicalCollegeAiController.getMcAiVsIssu
 // ==========================================
 // 7. CHC Approval of Forwarded Indents of PHCs
 // ==========================================
-const chcAnnualIndentController = require('../controllers/chcAnnualIndentController');
 router.get('/chc/fin-years', chcAnnualIndentController.getFinYears);
 router.get('/chc/drugs', chcAnnualIndentController.getDrugs);
 router.get('/chc/items', chcAnnualIndentController.getFacilityItems);

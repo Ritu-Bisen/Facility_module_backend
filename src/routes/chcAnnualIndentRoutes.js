@@ -27,4 +27,7 @@ router.post('/save-dispatch', chcAnnualIndentController.saveDispatchDetails);
 // Freeze
 router.post('/freeze', chcAnnualIndentController.freezeIndent);
 
+// Status Report of sub-facilities under Parent CHC
+router.get('/status-report', chcAnnualIndentController.getStatusReport);
+
 module.exports = router;

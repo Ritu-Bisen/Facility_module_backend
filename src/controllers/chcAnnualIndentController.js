@@ -103,6 +103,23 @@ async function freezeIndent(req, res) {
   }
 }
 
+async function getStatusReport(req, res) {
+  try {
+    const facilityId = req.query.facilityId || req.user?.facilityId || req.user?.facilityid || req.user?.FACILITYID;
+    const finYearId = req.query.finYearId || 547;
+
+    if (!facilityId) {
+      return res.status(400).json({ success: false, error: 'Facility ID is required' });
+    }
+
+    const data = await chcAnnualIndentModel.getChcIndentStatusReport(facilityId, finYearId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in chcAnnualIndentController.getStatusReport:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 module.exports = {
   getFinYears,
   getDrugs,
@@ -112,6 +129,7 @@ module.exports = {
   getDispatchDetails,
   saveDispatchDetails,
   freezeIndent,
+  getStatusReport,
 
   // Aliases with Chc prefix
   getChcFinYears: getFinYears,
@@ -121,5 +139,6 @@ module.exports = {
   approveChcBatchItems: approveBatchItems,
   getChcDispatchDetails: getDispatchDetails,
   saveChcDispatchDetails: saveDispatchDetails,
-  freezeChcIndent: freezeIndent
+  freezeChcIndent: freezeIndent,
+  getChcStatusReport: getStatusReport
 };

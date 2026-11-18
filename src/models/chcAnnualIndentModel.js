@@ -8,7 +8,7 @@ async function getChcFinYears() {
       select accyrsetid, accyear,
              case when sysdate between startdate and enddate then 'Y' else 'N' end as is_current
       from masaccyearsettings 
-      where accyrsetid > 537 
+      where accyrsetid > 534 
       order by accyrsetid desc
     `;
     const result = await db.execute(query, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
@@ -30,16 +30,24 @@ async function getChcDrugs(usrFacilityID, finYearId) {
     const fyId = Number(finYearId) || 0;
 
     const query = `
-      select distinct (m.itemcode || ' - ' || m.itemname) as itemname, m.itemid
-      from Anualindent a 
-      inner join masAnualindent ma on ma.indentid = a.indentid
-      inner join masfacilities mf on mf.facilityid = a.facilityid 
-      inner join masitems m on m.itemid = a.itemid 
-      where a.status = 'C' 
-        and m.categoryid not in (62) 
-        and ma.chcapprove is null 
-        and mf.chcfacilityid = :facId
-        and a.accyrsetid = :fyId
+      select distinct (itemcode||'-'||itemname) itemname, itemid from (
+        select null SlNo, nvl(a.ANUALINDENTID, 0) ANUALINDENTID, mf.facilityid,
+               mf.facilityname, m.itemcode, m.itemid itemid, itemname, sum(nvl(a.BMOApprovedQty, 0)) BMOApprovedQty1,
+               case when sum(nvl(a.BMOApprovedQty,0))= '0' then sum(nvl(a.facilityindentqty,0)) else sum(nvl(a.BMOApprovedQty, 0)) end BMOApprovedQtyold,
+               case when sum(a.BMOApprovedQty) is null then sum(nvl(a.facilityindentqty,0)) else sum(nvl(a.BMOApprovedQty, 0)) end BMOApprovedQty, 
+               sum(nvl(a.facilityindentqty, 0)) anlQty, sum(nvl(a.consumption, 0)) consumption,
+               sum(nvl(a.currentstock, 0)) currentstock
+        from Anualindent a 
+        inner join masAnualindent ma on ma.indentid = a.indentid
+        inner join masfacilities mf on mf.facilityid = a.facilityid 
+        inner join masitems m on m.itemid = a.itemid 
+        where a.status = 'C' 
+          and m.categoryid not in (62) 
+          and ma.chcapprove is null 
+          and mf.chcfacilityid = :facId
+          and a.accyrsetid = :fyId     
+        group by mf.facilityid, mf.facilityname, m.itemcode, itemname, m.itemid, a.ANUALINDENTID
+      )
       order by itemname
     `;
 
@@ -344,6 +352,46 @@ async function freezeChcIndent(usrFacilityID, finYearId) {
   }
 }
 
+// Populate Annual Indent Upload & Forward Status of Sub-Facilities under Parent CHC
+async function getChcIndentStatusReport(chcFacilityId, finYearId) {
+  try {
+    const facId = Number(chcFacilityId) || 0;
+    const fyId = Number(finYearId) || 0;
+
+    const query = `
+      SELECT 0 AS SlNo, 
+             fm.facilityid, 
+             fm.facilityname,
+             CASE 
+               WHEN ai.status = 'C' THEN 'Annual Indent Uploaded and Forwarded'   
+               WHEN ai.status = 'I' THEN 'Annual Indent Uploaded but not Forwarded' 
+               ELSE 'Indent Not Uploaded' 
+             END AS status
+      FROM masfacilities fm  
+      LEFT OUTER JOIN ( 
+        SELECT facilityid, status 
+        FROM masanualindent 
+        WHERE accyrsetid = :fyId 
+      ) ai ON ai.facilityid = fm.facilityid 
+      INNER JOIN masfacilitytypes ft ON ft.facilitytypeid = fm.facilitytypeid 
+      WHERE fm.chcfacilityid = :facId 
+        AND fm.isactive = 1  
+      ORDER BY ft.orderdp, fm.facilityname
+    `;
+
+    const result = await db.execute(query, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    return (result.rows || []).map((r, idx) => ({
+      slNo: idx + 1,
+      facilityId: r.FACILITYID || r.facilityid,
+      facilityName: r.FACILITYNAME || r.facilityname,
+      status: r.STATUS || r.status || 'Indent Not Uploaded'
+    }));
+  } catch (error) {
+    console.error('Error fetching CHC Indent Status Report:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   getChcFinYears,
   getChcDrugs,
@@ -352,5 +400,6 @@ module.exports = {
   approveChcBatchItems,
   getChcDispatchDetails,
   saveChcDispatchDetails,
-  freezeChcIndent
+  freezeChcIndent,
+  getChcIndentStatusReport
 };
