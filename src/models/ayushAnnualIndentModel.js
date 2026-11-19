@@ -197,6 +197,7 @@ async function getAyushDownloadFormatData(facilityId, subCatId) {
       ) Consumption on Consumption.itemcode = m.itemcode
       where sc.subcatid in (:targetSubCatId)
         and m.isfreezed is null
+        and m.ISFREEZ_ITPR is null
       order by m.ayushAIOrder
     `;
 
