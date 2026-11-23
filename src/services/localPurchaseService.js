@@ -58,8 +58,8 @@ async function getSupplyOrders(facilityId, finYearId, status) {
   return await localPurchaseModel.getSupplyOrders(facilityId, finYearId, status);
 }
 
-async function getSupplyOrderDetails(poNoId) {
-  return await localPurchaseModel.getSupplyOrderDetails(poNoId);
+async function getSupplyOrderDetails(poNoId, userId) {
+  return await localPurchaseModel.getSupplyOrderDetails(poNoId, userId);
 }
 
 async function getSupplyOrderEditDetails(poNoId) {

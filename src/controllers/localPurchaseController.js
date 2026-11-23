@@ -112,7 +112,8 @@ const getSupplyOrderDetails = async (req, res) => {
   try {
     const { id, poNoId } = req.params;
     const poId = poNoId || id;
-    const result = await localPurchaseService.getSupplyOrderDetails(poId);
+    const userId = req.query.userId || req.user?.userId;
+    const result = await localPurchaseService.getSupplyOrderDetails(poId, userId);
     if (!result) return res.status(404).json({ success: false, message: 'Supply order not found' });
     res.json({ success: true, data: result });
   } catch (error) {

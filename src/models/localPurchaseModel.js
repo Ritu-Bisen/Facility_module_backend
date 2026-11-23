@@ -251,7 +251,7 @@ async function getSupplyOrders(facilityId, finYearId, status) {
   });
 }
 
-async function getSupplyOrderDetails(poNoId) {
+async function getSupplyOrderDetails(poNoId, userId) {
   // 1. Fetch header details
   const headerSql = `
     SELECT 
@@ -264,6 +264,12 @@ async function getSupplyOrderDetails(poNoId) {
       a.contractid as "contractId",
       a.CategoryID as "categoryId",
       nvl(a.SOValue,0) as "soValue",
+      a.DispatchNo as "dispatchNo",
+      to_char(a.DispatchDate, 'dd-MM-yyyy') as "dispatchDate",
+      a.Status as "status",
+      a.SourceID as "sourceId",
+      src.SourceName as "sourceName",
+      a.PSAID as "psaId",
       m1.SupplierName as "mainSupplierName",
       m2.SupplierName as "lpSupplierName",
       m2.Address as "lpAddress",
@@ -277,12 +283,61 @@ async function getSupplyOrderDetails(poNoId) {
     LEFT JOIN LPMasSuppliers m2 ON a.LPSupplierID = m2.LPSupplierID
     INNER JOIN masAccYearSettings b ON a.AccYrSetID = b.AccYrSetID
     LEFT OUTER JOIN lpcontracts c ON c.contractid = a.contractid
+    LEFT OUTER JOIN masSources src ON src.SourceID = a.SourceID
     WHERE a.PoNoID = :poNoId
   `;
   const headerResult = await db.execute(headerSql, { poNoId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
   const header = headerResult.rows.length > 0 ? headerResult.rows[0] : null;
 
   if (!header) return null;
+
+  // Fetch Header1, Header2, Header3 from MASFACHEADERFOOTER based on userId
+  let facHeader = { header1: '', header2: '', header3: '' };
+  const targetUserId = userId ? String(userId).trim() : null;
+  if (targetUserId) {
+    try {
+      const facSql = `
+        SELECT HEADER1, HEADER2, HEADER3
+        FROM MASFACHEADERFOOTER
+        WHERE USERID = :targetUserId
+      `;
+      const facResult = await db.execute(facSql, { targetUserId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
+      if (facResult.rows && facResult.rows.length > 0) {
+        const row = facResult.rows[0];
+        facHeader = {
+          header1: row.HEADER1 || row.header1 || '',
+          header2: row.HEADER2 || row.header2 || '',
+          header3: row.HEADER3 || row.header3 || ''
+        };
+      }
+    } catch (err) {
+      console.warn('Could not fetch MASFACHEADERFOOTER for userId:', targetUserId, err.message);
+    }
+  }
+
+  // Fallback: If header1 is empty and we have a facility/PSAID, lookup via usrUsers
+  const psaId = header.psaId || header.PSAID;
+  if (!facHeader.header1 && psaId) {
+    try {
+      const fbSql = `
+        SELECT fh.HEADER1, fh.HEADER2, fh.HEADER3
+        FROM MASFACHEADERFOOTER fh
+        INNER JOIN usrUsers u ON TO_CHAR(u.USERID) = TO_CHAR(fh.USERID)
+        WHERE u.FACILITYID = :facilityId AND ROWNUM = 1
+      `;
+      const fbRes = await db.execute(fbSql, { facilityId: psaId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
+      if (fbRes.rows && fbRes.rows.length > 0) {
+        const row = fbRes.rows[0];
+        facHeader = {
+          header1: row.HEADER1 || row.header1 || '',
+          header2: row.HEADER2 || row.header2 || '',
+          header3: row.HEADER3 || row.header3 || ''
+        };
+      }
+    } catch (e) {
+      // ignore fallback error
+    }
+  }
 
   const h = {
     poNoId: header.poNoId || header.PONOID,
@@ -294,6 +349,12 @@ async function getSupplyOrderDetails(poNoId) {
     contractId: header.contractId || header.CONTRACTID,
     categoryId: header.categoryId || header.CATEGORYID,
     soValue: header.soValue || header.SOVALUE,
+    dispatchNo: header.dispatchNo || header.DISPATCHNO || '',
+    dispatchDate: header.dispatchDate || header.DISPATCHDATE || '',
+    status: header.status || header.STATUS || '',
+    sourceId: header.sourceId || header.SOURCEID || '',
+    sourceName: header.sourceName || header.SOURCENAME || '',
+    fund: header.sourceName || header.SOURCENAME || (header.sourceId || header.SOURCEID ? String(header.sourceId || header.SOURCEID) : ''),
     mainSupplierName: header.mainSupplierName || header.MAINSUPPLIERNAME,
     lpSupplierName: header.lpSupplierName || header.LPSUPPLIERNAME,
     lpAddress: header.lpAddress || header.LPADDRESS,
@@ -301,7 +362,10 @@ async function getSupplyOrderDetails(poNoId) {
     lpPhone: header.lpPhone || header.LPPHONE,
     shAccYear: header.shAccYear || header.SHACCYEAR,
     contractNo: header.contractNo || header.CONTRACTNO,
-    itemCnt: header.itemCnt || header.ITEMCNT
+    itemCnt: header.itemCnt || header.ITEMCNT,
+    header1: facHeader.header1 || '',
+    header2: facHeader.header2 || '',
+    header3: facHeader.header3 || ''
   };
 
   // Resolve final supplier name and address (prefer LP over main for this module)
@@ -327,6 +391,10 @@ async function getSupplyOrderEditDetails(poNoId) {
            a.PoDate,
            a.CategoryID,
            a.SOValue,
+           a.DispatchNo,
+           to_char(a.DispatchDate, 'yyyy-mm-dd') as DispatchDate,
+           a.Status,
+           a.SourceID,
            (
              SELECT COUNT(PoNoID)
              FROM LPSoordereditems c
@@ -352,6 +420,10 @@ async function getSupplyOrderEditDetails(poNoId) {
     poDate: row.PODATE || row.podate ? new Date(row.PODATE || row.podate).toLocaleDateString('en-GB').replace(/\//g, '-') : null,
     categoryId: row.CATEGORYID || row.categoryid,
     soValue: row.SOVALUE || row.sovalue,
+    dispatchNo: row.DISPATCHNO || row.dispatchno || '',
+    dispatchDate: row.DISPATCHDATE || row.dispatchdate || '',
+    status: row.STATUS || row.status || '',
+    sourceId: row.SOURCEID || row.sourceid || '',
     itemCnt: row.ITEMCNT || row.itemcnt
   };
 
