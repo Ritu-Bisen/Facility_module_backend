@@ -77,6 +77,8 @@ async function getChcFacilityItems(usrFacilityID, finYearId, itemId) {
              case when sum(a.BMOApprovedQty) is null then sum(nvl(a.facilityindentqty, 0)) else sum(nvl(a.BMOApprovedQty, 0)) end as bmoapprovedqty,
              sum(nvl(a.facilityindentqty, 0)) as anlqty,
              sum(nvl(a.consumption, 0)) as consumption,
+             sum(nvl(a.actualconsumption, 0)) as actualconsumption,
+             sum(nvl(a.projectedconsumption, 0)) as projectedconsumption,
              sum(nvl(a.currentstock, 0)) as currentstock,
              max(a.isapprovedchc) as isapprovedchc
       from Anualindent a 
@@ -102,11 +104,14 @@ async function getChcFacilityItems(usrFacilityID, finYearId, itemId) {
       itemId: r.ITEMID || r.itemid,
       itemName: r.ITEMNAME || r.itemname,
       consumption: Number(r.CONSUMPTION || r.consumption || 0),
+      actualConsumption: Number(r.ACTUALCONSUMPTION || r.actualconsumption || 0),
+      projectedConsumption: Number(r.PROJECTEDCONSUMPTION || r.projectedconsumption || 0),
       currentStock: Number(r.CURRENTSTOCK || r.currentstock || 0),
       anlQty: Number(r.ANLQTY || r.anlqty || 0),
       bmoApprovedQty: Number(r.BMOAPPROVEDQTY !== undefined ? r.BMOAPPROVEDQTY : (r.bmoapprovedqty !== undefined ? r.bmoapprovedqty : (r.anlqty || 0))),
+      bmoApprovedQty1: Number(r.BMOAPPROVEDQTY1 || r.bmoapprovedqty1 || 0),
       isApprovedChc: r.ISAPPROVEDCHC || r.isapprovedchc || null,
-      isApproved: (r.ISAPPROVEDCHC === 'Y' || r.isapprovedchc === 'Y' || Number(r.BMOAPPROVEDQTY || r.bmoapprovedqty || 0) > 0)
+      isApproved: (r.ISAPPROVEDCHC === 'Y' || r.isapprovedchc === 'Y')
     }));
   } catch (error) {
     console.error('Error fetching CHC Facility Items:', error);
