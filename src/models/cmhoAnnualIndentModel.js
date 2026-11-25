@@ -82,8 +82,44 @@ async function getCmhoIndentStatusReport(districtId, finYearId) {
   }
 }
 
+// Fetch BMO Approved Annual Indent Status for CMHO
+async function getBmoApprovedStatus(districtId, usrFacilityId, finYearId) {
+  try {
+    const distId = Number(districtId) || 0;
+    const facId = Number(usrFacilityId) || 0;
+    const fyId = Number(finYearId) || 547;
+
+    const query = `
+      SELECT 0 AS SlNo, 
+             mf.facilityid, 
+             mf.facilityname,
+             CASE WHEN a.chcapprove = 'C' THEN 'BMO Approved' ELSE 'BMO Not Approved' END AS status
+      FROM masAnualindent a 
+      LEFT OUTER JOIN masfacilities mf ON mf.facilityid = a.facilityid  
+      WHERE mf.districtid = :distId 
+        AND mf.facilityid NOT IN (:facId) 
+        AND a.accyrsetid = :fyId 
+        AND a.isreagent IS NULL 
+        AND mf.facilitytypeid IN (358)
+      ORDER BY mf.facilityname
+    `;
+
+    const result = await db.execute(query, { distId, facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    return (result.rows || []).map((r, idx) => ({
+      slNo: idx + 1,
+      facilityId: r.FACILITYID || r.facilityid,
+      facilityName: r.FACILITYNAME || r.facilityname,
+      status: r.STATUS || r.status || 'BMO Not Approved'
+    }));
+  } catch (error) {
+    console.error('Error fetching BMO Approved Status Report:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   getCmhoFinYears,
   getFacilityDistrictId,
-  getCmhoIndentStatusReport
+  getCmhoIndentStatusReport,
+  getBmoApprovedStatus
 };

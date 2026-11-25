@@ -269,6 +269,9 @@ async function getSupplyOrderDetails(poNoId, userId) {
       a.Status as "status",
       a.SourceID as "sourceId",
       src.SourceName as "sourceName",
+      COALESCE(a.LPBUDGETID, a.BUDGETID, a.CategoryID) as "budgetId",
+      COALESCE(a.LPBUDGETID, a.BUDGETID, a.CategoryID) as "lpBudgetId",
+      lbg.BUDGETNAME as "budgetName",
       a.PSAID as "psaId",
       m1.SupplierName as "mainSupplierName",
       m2.SupplierName as "lpSupplierName",
@@ -284,6 +287,7 @@ async function getSupplyOrderDetails(poNoId, userId) {
     INNER JOIN masAccYearSettings b ON a.AccYrSetID = b.AccYrSetID
     LEFT OUTER JOIN lpcontracts c ON c.contractid = a.contractid
     LEFT OUTER JOIN masSources src ON src.SourceID = a.SourceID
+    LEFT OUTER JOIN MASLPBUDGET lbg ON lbg.LPBUDGETID = COALESCE(a.LPBUDGETID, a.BUDGETID, a.CategoryID)
     WHERE a.PoNoID = :poNoId
   `;
   const headerResult = await db.execute(headerSql, { poNoId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
@@ -354,7 +358,10 @@ async function getSupplyOrderDetails(poNoId, userId) {
     status: header.status || header.STATUS || '',
     sourceId: header.sourceId || header.SOURCEID || '',
     sourceName: header.sourceName || header.SOURCENAME || '',
-    fund: header.sourceName || header.SOURCENAME || (header.sourceId || header.SOURCEID ? String(header.sourceId || header.SOURCEID) : ''),
+    budgetId: header.budgetId || header.BUDGETID || header.lpBudgetId || header.LPBUDGETID || '',
+    lpBudgetId: header.lpBudgetId || header.LPBUDGETID || header.budgetId || header.BUDGETID || '',
+    budgetName: header.budgetName || header.BUDGETNAME || '',
+    fund: header.budgetName || header.BUDGETNAME || header.sourceName || header.SOURCENAME || (header.sourceId || header.SOURCEID ? String(header.sourceId || header.SOURCEID) : ''),
     mainSupplierName: header.mainSupplierName || header.MAINSUPPLIERNAME,
     lpSupplierName: header.lpSupplierName || header.LPSUPPLIERNAME,
     lpAddress: header.lpAddress || header.LPADDRESS,
@@ -390,6 +397,9 @@ async function getSupplyOrderEditDetails(poNoId) {
            a.PoNo,
            a.PoDate,
            a.CategoryID,
+           COALESCE(a.LPBUDGETID, a.BUDGETID, a.CategoryID) as lpBudgetId,
+           COALESCE(a.LPBUDGETID, a.BUDGETID, a.CategoryID) as budgetId,
+           lbg.BUDGETNAME as budgetName,
            a.SOValue,
            a.DispatchNo,
            to_char(a.DispatchDate, 'yyyy-mm-dd') as DispatchDate,
@@ -403,6 +413,8 @@ async function getSupplyOrderEditDetails(poNoId) {
     FROM LPsoOrderPlaced a
     LEFT OUTER JOIN lpcontracts c
             ON c.contractid = a.contractid
+    LEFT OUTER JOIN MASLPBUDGET lbg
+            ON lbg.LPBUDGETID = COALESCE(a.LPBUDGETID, a.BUDGETID, a.CategoryID)
     WHERE a.PonoID = :poNoId
   `;
   const result = await db.execute(sql, { poNoId }, { outFormat: db.oracledb?.OUT_FORMAT_OBJECT || 4002 });
@@ -419,6 +431,10 @@ async function getSupplyOrderEditDetails(poNoId) {
     poNo: row.PONO || row.pono,
     poDate: row.PODATE || row.podate ? new Date(row.PODATE || row.podate).toLocaleDateString('en-GB').replace(/\//g, '-') : null,
     categoryId: row.CATEGORYID || row.categoryid,
+    lpBudgetId: row.LPBUDGETID || row.lpbudgetid || row.BUDGETID || row.budgetid,
+    budgetId: row.BUDGETID || row.budgetid || row.LPBUDGETID || row.lpbudgetid,
+    budgetName: row.BUDGETNAME || row.budgetname || '',
+    fund: row.BUDGETNAME || row.budgetname || '',
     soValue: row.SOVALUE || row.sovalue,
     dispatchNo: row.DISPATCHNO || row.dispatchno || '',
     dispatchDate: row.DISPATCHDATE || row.dispatchdate || '',
@@ -639,26 +655,27 @@ async function generateSupplyOrderNo(facilityId, finYearId) {
 }
 
 async function saveSupplyOrderHeader(facilityId, data) {
-  let { poNoId, accYrSetId, sourceId, schemeId, lpSupplierId, contractId, poNo, poDate, categoryId, psaCode, icCode, supplierCode, autoSoCode } = data;
+  let { poNoId, accYrSetId, sourceId, schemeId, lpSupplierId, contractId, poNo, poDate, categoryId, psaCode, icCode, supplierCode, autoSoCode, lpBudgetId, budgetId } = data;
   
   sourceId = sourceId || 1;
   schemeId = schemeId || 1;
   categoryId = categoryId || 1;
   icCode = icCode || '';
+  const finalBudgetId = lpBudgetId || budgetId || categoryId || null;
 
   if (!poNoId || poNoId === '0' || poNoId === 0) {
     // Insert
     const sql = `
       INSERT INTO LPsoOrderPlaced (
-        contractid, AccYrSetID, SourceID, SchemeID, LPSupplierID, PONO, PODate, PSAID, CategoryID, PSA_SOCode, IC_SOCode, Sup_SOCode, Auto_SOCode
+        contractid, AccYrSetID, SourceID, SchemeID, LPSupplierID, PONO, PODate, PSAID, CategoryID, PSA_SOCode, IC_SOCode, Sup_SOCode, Auto_SOCode, LPBUDGETID, BUDGETID
       ) VALUES (
-        :contractId, :accYrSetId, :sourceId, :schemeId, :lpSupplierId, :poNo, TO_DATE(:poDate, 'DD-MM-YYYY'), :facilityId, :categoryId, :psaCode, :icCode, :supplierCode, :autoSoCode
+        :contractId, :accYrSetId, :sourceId, :schemeId, :lpSupplierId, :poNo, TO_DATE(:poDate, 'DD-MM-YYYY'), :facilityId, :categoryId, :psaCode, :icCode, :supplierCode, :autoSoCode, :finalBudgetId, :finalBudgetId
       )
     `;
     
     // In oracle we might need returning into to get the ID, but for simplicity we'll query it back
     await db.execute(sql, {
-      contractId, accYrSetId, sourceId, schemeId, lpSupplierId, poNo, poDate, facilityId, categoryId, psaCode, icCode, supplierCode, autoSoCode
+      contractId, accYrSetId, sourceId, schemeId, lpSupplierId, poNo, poDate, facilityId, categoryId, psaCode, icCode, supplierCode, autoSoCode, finalBudgetId
     }, { autoCommit: true });
 
     const getSql = `SELECT PoNoID FROM LPsoOrderPlaced WHERE PoNo = :poNo AND PSAID = :facilityId`;
@@ -678,11 +695,13 @@ async function saveSupplyOrderHeader(facilityId, data) {
         LPSupplierID = :lpSupplierId,
         PONO = :poNo,
         PODate = TO_DATE(:poDate, 'DD-MM-YYYY'),
-        CategoryID = :categoryId
+        CategoryID = :categoryId,
+        LPBUDGETID = :finalBudgetId,
+        BUDGETID = :finalBudgetId
       WHERE PoNoID = :poNoId AND PSAID = :facilityId
     `;
     await db.execute(sql, {
-      contractId, accYrSetId, sourceId, schemeId, lpSupplierId, poNo, poDate, categoryId, poNoId, facilityId
+      contractId, accYrSetId, sourceId, schemeId, lpSupplierId, poNo, poDate, categoryId, finalBudgetId, poNoId, facilityId
     }, { autoCommit: true });
     
     return poNoId;

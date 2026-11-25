@@ -89,6 +89,7 @@ router.get('/dao/item-wise-ai', ayushAnnualIndentController.getDaoItemWiseAi);
 // CMHO Annual Indent Routes
 router.get('/cmho/fin-years', cmhoAnnualIndentController.getFinYears);
 router.get('/cmho/status-report', cmhoAnnualIndentController.getStatusReport);
+router.get('/cmho/bmo-approved-status', cmhoAnnualIndentController.getBmoApprovedStatusReport);
 
 // CHC Annual Indent Routes
 router.get('/chc/fin-years', chcAnnualIndentController.getFinYears);

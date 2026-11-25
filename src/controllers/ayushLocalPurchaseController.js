@@ -165,7 +165,9 @@ async function saveAyushHeader(req, res, next) {
           LPSupplierID = :supplierId,
           PONO = :poNo,
           PODate = TO_DATE(:poDate, 'YYYY-MM-DD'),
-          CategoryID = :fundId
+          CategoryID = :fundId,
+          LPBUDGETID = :fundId,
+          BUDGETID = :fundId
         WHERE PoNoID = :id AND PSAID = :facilityId
       `;
       await db.execute(updateSOSql, {
@@ -242,9 +244,9 @@ async function saveAyushHeader(req, res, next) {
       // 3. Insert supply order into LPsoOrderPlaced
       const soInsertSql = `
         INSERT INTO LPsoOrderPlaced (
-          contractid, AccYrSetID, SourceID, SchemeID, LPSupplierID, PONO, PODate, PSAID, CategoryID, PSA_SOCode, IC_SOCode, Sup_SOCode, Auto_SOCode, Status, ADVANCEREQUEST, ADVANCEPAID, ISLOCALPURCHASE, SENTMAIL
+          contractid, AccYrSetID, SourceID, SchemeID, LPSupplierID, PONO, PODate, PSAID, CategoryID, PSA_SOCode, IC_SOCode, Sup_SOCode, Auto_SOCode, Status, ADVANCEREQUEST, ADVANCEPAID, ISLOCALPURCHASE, SENTMAIL, LPBUDGETID, BUDGETID
         ) VALUES (
-          :contractId, :finYearId, 1, 1, :supplierId, :poNo, TO_DATE(:poDate, 'YYYY-MM-DD'), :facilityId, :fundId, :psaCode, '', 'AY', :autoSoCode, 'IN', 0, 0, 1, 0
+          :contractId, :finYearId, 1, 1, :supplierId, :poNo, TO_DATE(:poDate, 'YYYY-MM-DD'), :facilityId, :fundId, :psaCode, '', 'AY', :autoSoCode, 'IN', 0, 0, 1, 0, :fundId, :fundId
         )
       `;
       await db.execute(soInsertSql, {
@@ -290,6 +292,9 @@ async function getAyushOrderDetails(req, res, next) {
         sup.SupplierName as "supplierName",
         a.status as "status",
         a.CategoryID as "categoryId",
+        COALESCE(a.LPBUDGETID, a.BUDGETID, a.CategoryID) as "budgetId",
+        COALESCE(a.LPBUDGETID, a.BUDGETID, a.CategoryID) as "lpBudgetId",
+        lbg.BUDGETNAME as "budgetName",
         a.ContractID as "contractId",
         c.ContractNo as "contractNo",
         c.SchemeID as "tenderNo",
@@ -300,6 +305,7 @@ async function getAyushOrderDetails(req, res, next) {
       FROM LPsoOrderPlaced a 
       INNER JOIN LPmasSuppliers sup ON sup.LPSupplierID = a.LPSupplierID
       LEFT JOIN LPContracts c ON c.ContractID = a.ContractID
+      LEFT JOIN MASLPBUDGET lbg ON lbg.LPBUDGETID = COALESCE(a.LPBUDGETID, a.BUDGETID, a.CategoryID)
       WHERE a.PoNoID = :id AND a.PSAID = :facilityId
     `;
 
@@ -318,6 +324,10 @@ async function getAyushOrderDetails(req, res, next) {
       supplierName: r.supplierName || r.SUPPLIERNAME,
       status: (r.status === 'IN' || r.STATUS === 'IN') ? 'Incomplete' : 'Order Placed',
       categoryId: r.categoryId || r.CATEGORYID,
+      budgetId: r.budgetId || r.BUDGETID || r.lpBudgetId || r.LPBUDGETID,
+      lpBudgetId: r.lpBudgetId || r.LPBUDGETID || r.budgetId || r.BUDGETID,
+      budgetName: r.budgetName || r.BUDGETNAME || '',
+      fund: r.budgetName || r.BUDGETNAME || '',
       contractId: r.contractId || r.CONTRACTID,
       contractNo: r.contractNo || r.CONTRACTNO,
       tenderNo: r.tenderNo || r.TENDERNO,

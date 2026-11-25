@@ -11,7 +11,7 @@ async function getItems(facilityId, inStockOnly = false) {
       FROM tbfacilityreceiptbatches rb
       INNER JOIN tbfacilityreceiptitems i
         ON rb.facreceiptitemid = i.facreceiptitemid
-      INNER JOIN masitems mi
+      INNER JOIN vmasitems mi
         ON mi.itemid = i.itemid
       INNER JOIN tbfacilityreceipts r
         ON r.facreceiptid = i.facreceiptid
