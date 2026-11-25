@@ -19,7 +19,7 @@ select
    from tbfacilityreceiptbatches b
    inner join tbfacilityreceiptitems i on b.facreceiptitemid=i.facreceiptitemid
    inner join tbfacilityreceipts t on t.facreceiptid= i.facreceiptid
-   inner join masitems mi on mi.itemid= i.itemid
+   inner join vmasitems mi on mi.itemid= i.itemid
    left outer join
    (
      select fs.facilityid, fsi.itemid, ftbo.inwno, sum(nvl(ftbo.issueqty,0)) issueqty
@@ -51,7 +51,7 @@ left outer join masfacilities f2 on f2.facilityid=fs.tofacilityid
     Case when t.FACRECEIPTTYPE = 'FC' then 'Opening' else  case when  f2.facilityname is  null then 'WH:'||w.warehousename else f2.facilityname end end as  Place, t.FACRECEIPTNO AS TRANNO,i.facreceiptitemid as receiptitemid 
    from tbfacilityreceiptbatches b
    inner join tbfacilityreceiptitems i on b.facreceiptitemid=i.facreceiptitemid
-      inner join masitems mi on mi.itemid= i.itemid
+      inner join vmasitems mi on mi.itemid= i.itemid
    inner join tbfacilityreceipts t on t.facreceiptid= i.facreceiptid
    left outer join maswarehouses w on w.warehouseid=t.warehouseid
 left outer join masfacilities f2 on f2.facilityid=t.TOFACILITYID
@@ -76,12 +76,12 @@ order by dt,Type1
 async function getFacilityItems(facilityId) {
   try {
     const query = `
-      select distinct mi.itemid, mi.itemcode || ' - ' || mi.itemname as itemname
-      from masitems mi
+      select distinct mi.itemid, mi.itemcode, mi.itemname, mi.itemcode || ' - ' || mi.itemname as itemdisplay
+      from vmasitems mi
       inner join tbfacilityreceiptitems i on mi.itemid = i.itemid
       inner join tbfacilityreceipts t on t.facreceiptid = i.facreceiptid
       where t.facilityid = :facilityId
-      order by itemname
+      order by mi.itemname
     `;
     const result = await db.execute(query, [facilityId], { outFormat: oracledb.OUT_FORMAT_OBJECT });
     return result.rows;

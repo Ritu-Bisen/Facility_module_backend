@@ -592,13 +592,6 @@ async function getNonEdlCreateFinYears(facilityId, mode, indentId) {
              case when sysdate between c.startdate and c.enddate then 'Y' else 'N' end as is_current
       from masaccyearsettings c
       where c.accyrsetid > 546
-        and c.accyrsetid not in (
-          select distinct a.accyrsetid
-          from masAnualIndent a
-          where a.NONEDLIndentType = 'Y'
-            and a.isReagent is null
-            and a.facilityid = :facId
-        )
       order by c.accyrsetid desc
     `;
     const result = await db.execute(query, { facId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });

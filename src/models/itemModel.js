@@ -12,7 +12,7 @@ async function getItemDetails(itemId) {
       mit.itemtypecode AS type,
       mi.packingqty,
       mi.isedl2019
-    FROM masitems mi
+    FROM vmasitems mi
     LEFT JOIN masitemtypes mit
       ON mit.itemtypeid = mi.itemtypeid
     WHERE TO_CHAR(mi.itemid) = :itemId OR mi.itemcode = :itemId
@@ -26,41 +26,32 @@ async function getItemDetails(itemId) {
 
   const row = result.rows[0];
   return {
-    itemid: row.ITEMID,
-    itemcode: row.ITEMCODE,
-    itemname: row.ITEMNAME,
-    strength1: row.STRENGTH1,
-    sku: row.UNIT,
+    itemid: row.ITEMID || row.itemid,
+    itemcode: row.ITEMCODE || row.itemcode,
+    itemname: row.ITEMNAME || row.itemname,
+    strength1: row.STRENGTH1 || row.strength1,
+    sku: row.UNIT || row.unit,
    
-    type: row.TYPE,
+    type: row.TYPE || row.type,
  
-    packqty: row.PACKINGQTY,
-    isedl2019: row.ISEDL2019,
-    edltype: row.ISEDL2019
+    packqty: row.PACKINGQTY || row.packingqty,
+    isedl2019: row.ISEDL2019 || row.isedl2019,
+    edltype: row.ISEDL2019 || row.isedl2019
   };
 }
 
 async function getDrugs() {
   const query = `
     SELECT itemid, itemcode, itemname
-    FROM masitems
-    WHERE categoryid IN (
-      SELECT categoryid
-      FROM masitemcategories
-      WHERE mcid IN (
-        SELECT mcid
-        FROM masitemmaincategory
-        WHERE mcategory = 'Drugs'
-      )
-    )
+    FROM vmasitems
     ORDER BY itemname
   `;
 
   const result = await db.execute(query, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
   return result.rows.map(row => ({
-    itemid: row.ITEMID,
-    itemcode: row.ITEMCODE,
-    itemname: row.ITEMNAME
+    itemid: row.ITEMID || row.itemid,
+    itemcode: row.ITEMCODE || row.itemcode,
+    itemname: row.ITEMNAME || row.itemname
   }));
 }
 
