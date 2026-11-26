@@ -660,38 +660,6 @@ async function getCreateIndentHeader(facilityId, finYearId, indentId) {
       }
     }
 
-    if (facId > 0 && fyId > 0) {
-      const checkQuery = `
-        select a.indentid, a.indentno, to_char(a.indentdate,'dd-mm-yyyy') indentdate, a.status, a.AIcategoryid, 
-               coalesce(
-                 (select sub.catname || ' (' || mc2.categoryname || ')' from massubitemcategory sub inner join masitemcategories mc2 on mc2.categoryid = sub.categoryid where sub.subcatid = a.AIcategoryid),
-                 mc.categoryname,
-                 (select min(mc3.categoryname) from anualindent ai inner join masitems m on m.itemid = ai.itemid inner join masitemcategories mc3 on mc3.categoryid = m.categoryid where ai.indentid = a.indentid),
-                 'General'
-               ) categoryname 
-        from masAnualIndent a
-        left outer join masitemcategories mc on mc.categoryid = a.AIcategoryid
-        where a.facilityid = :facId
-          and a.accyrsetid = :fyId
-          and a.NONEDLIndentType is null
-          and a.isReagent is null
-        order by a.indentid desc
-      `;
-      const checkResult = await db.execute(checkQuery, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-      if (checkResult.rows && checkResult.rows.length > 0) {
-        const r = checkResult.rows[0];
-        return {
-          indentId: r.INDENTID || r.indentId,
-          indentNo: r.INDENTNO || r.indentNo,
-          indentDate: r.INDENTDATE || r.indentDate,
-          status: r.STATUS || r.status,
-          categoryId: r.AICATEGORYID || r.aiCategoryId || 0,
-          categoryName: r.CATEGORYNAME || r.categoryName || 'General',
-          exists: true
-        };
-      }
-    }
-
     return {
       indentId: 0,
       indentNo: 'AUTO GENERATED',

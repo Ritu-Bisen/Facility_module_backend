@@ -116,37 +116,9 @@ async function getDhCreateIndentHeader(facilityId, finYearId, indentId) {
       }
     }
 
-    if (facId > 0 && fyId > 0) {
-      const checkQuery = `
-        select a.indentid, a.indentno, to_char(a.indentdate,'dd-mm-yyyy') indentdate, a.status, a.AIcategoryid,
-               c.accyear, 'General' as categoryname
-        from masAnualIndent a
-        left outer join masaccyearsettings c on c.accyrsetid = a.accyrsetid
-        where a.facilityid = :facId
-          and a.accyrsetid = :fyId
-          and a.nonedlindenttype is null
-          and a.isreagent is null
-        order by a.indentid desc
-      `;
-      const checkResult = await db.execute(checkQuery, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-      if (checkResult.rows && checkResult.rows.length > 0) {
-        const r = checkResult.rows[0];
-        return {
-          indentId: r.INDENTID || r.indentId,
-          indentNo: r.INDENTNO || r.indentNo,
-          indentDate: r.INDENTDATE || r.indentDate,
-          status: r.STATUS || r.status,
-          accYear: r.ACCYEAR || r.accYear || '',
-          categoryId: 0,
-          categoryName: 'General',
-          exists: true
-        };
-      }
-    }
-
     return {
       indentId: 0,
-      indentNo: 'AUTO GENERATED',
+      indentNo: '',
       indentDate: 'System Generated',
       status: 'N',
       accYear: '',
@@ -166,7 +138,8 @@ async function generateDhIndentHeader(facilityId, finYearId) {
     const facId = Number(facilityId) || 22595;
     const fyId = Number(finYearId) || 547;
 
-    const existingCheck = await db.execute(
+    // 1. Check if an uncompleted/draft indent ('I') already exists for this facility & financial year
+    const existingDraftCheck = await db.execute(
       `select a.indentid, a.indentno, to_char(a.indentdate, 'dd-mm-yyyy') as indentdate, a.status, c.accyear
        from masAnualIndent a
        left outer join masaccyearsettings c on c.accyrsetid = a.accyrsetid
@@ -174,12 +147,13 @@ async function generateDhIndentHeader(facilityId, finYearId) {
          and a.accyrsetid = :fyId
          and a.nonedlindenttype is null
          and a.isreagent is null
+         and a.status = 'I'
        order by a.indentid desc`,
       { facId, fyId },
       { outFormat: oracledb.OUT_FORMAT_OBJECT }
     );
-    if (existingCheck.rows && existingCheck.rows.length > 0) {
-      const r = existingCheck.rows[0];
+    if (existingDraftCheck.rows && existingDraftCheck.rows.length > 0) {
+      const r = existingDraftCheck.rows[0];
       return {
         indentId: r.INDENTID || r.indentId,
         indentNo: r.INDENTNO || r.indentNo,
@@ -192,6 +166,23 @@ async function generateDhIndentHeader(facilityId, finYearId) {
       };
     }
 
+    // 2. Determine prefix (AI or RI): If an annual indent has already been completed ('C'), subsequent indents are Revise Indents ('RI')
+    let supplierCode = 'AI';
+    const completedCheck = await db.execute(
+      `select count(indentid) cnt
+       from masAnualIndent
+       where facilityid = :facId
+         and accyrsetid = :fyId
+         and nonedlindenttype is null
+         and isreagent is null
+         and status = 'C'`,
+      { facId, fyId },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    if (completedCheck.rows && completedCheck.rows[0] && Number(completedCheck.rows[0].CNT || completedCheck.rows[0].cnt) > 0) {
+      supplierCode = 'RI';
+    }
+
     const yrQuery = `select shaccyear from masAccYearSettings where accyrsetid = :fyId`;
     const yrRes = await db.execute(yrQuery, { fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const shYear = yrRes.rows && yrRes.rows[0] ? (yrRes.rows[0].SHACCYEAR || yrRes.rows[0].shaccyear || '27-28') : '27-28';
@@ -200,17 +191,18 @@ async function generateDhIndentHeader(facilityId, finYearId) {
     const seqRes = await db.execute(seqQuery, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const nextCode = seqRes.rows && seqRes.rows[0] ? (seqRes.rows[0].NEXTCODE || seqRes.rows[0].nextcode || 1) : 1;
     const codeStr = String(nextCode).padStart(5, '0');
-    const indentNo = `${facId}/AI${codeStr}/${shYear}`;
+    const indentNo = `${facId}/${supplierCode}${codeStr}/${shYear}`;
 
     const idQuery = `select nvl(max(indentid), 0) + 1 as nextid from masAnualIndent`;
     const idRes = await db.execute(idQuery, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     const indentId = idRes.rows && idRes.rows[0] ? (idRes.rows[0].NEXTID || idRes.rows[0].nextid || 1) : 1;
 
+    const isRevise = supplierCode === 'RI' ? 'Y' : null;
     const insertQuery = `
-      insert into masAnualIndent (indentid, AccYrSetID, FacilityID, indentno, indentdate, Status, auto_aicode)
-      values (:indentId, :fyId, :facId, :indentNo, sysdate, 'I', :nextCode)
+      insert into masAnualIndent (indentid, AccYrSetID, FacilityID, indentno, indentdate, Status, auto_aicode, isrevise)
+      values (:indentId, :fyId, :facId, :indentNo, sysdate, 'I', :nextCode, :isRevise)
     `;
-    await db.execute(insertQuery, { indentId, fyId, facId, indentNo, nextCode }, { autoCommit: true });
+    await db.execute(insertQuery, { indentId, fyId, facId, indentNo, nextCode, isRevise }, { autoCommit: true });
 
     return {
       indentId,
