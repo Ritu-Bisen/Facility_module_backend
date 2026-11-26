@@ -25,11 +25,11 @@ async function getCurrentStockBatchWise(facilityId, itemTypeId) {
           (
             SELECT b.batchno, b.expdate, f.facilityname, mi.ITEMCODE, b.inwno, 
                    mi.ITEMNAME, mi.strength1, mi.unit AS SKU, t.facilityid, mi.itemid,
-                   NVL(mr.locationno,'0') AS STOCKLOCATION,
+                   NVL(mr.locationno, NVL(b.stocklocation, '0')) AS STOCKLOCATION,
                    (CASE WHEN b.qastatus = '1' THEN (NVL(b.absrqty, 0) - NVL(iq.issueqty, 0)) END) ReadyForIssue,
                    (CASE WHEN b.qastatus = '0' OR b.qastatus = '3' THEN (NVL(b.absrqty, 0) - NVL(iq.issueqty, 0)) END) Pending
             FROM tbfacilityreceiptbatches b
-            LEFT JOIN masracks mr ON mr.rackid = b.StockLocation
+            LEFT JOIN masracks mr ON TO_CHAR(mr.rackid) = b.StockLocation
             INNER JOIN tbfacilityreceiptitems i ON b.facreceiptitemid = i.facreceiptitemid
             INNER JOIN tbfacilityreceipts t ON t.facreceiptid = i.facreceiptid
             INNER JOIN vmasitems mi ON mi.itemid = i.itemid
@@ -77,7 +77,7 @@ async function getFacilityStockDrugWise(facilityId) {
                  when round(b.expdate-sysdate,0)>270  and round(b.expdate-sysdate,0)<=365  then '270\u2013365 days' 
                  when round(b.expdate-sysdate,0)>365 then '>365 days' end  as ExpDaysStatus,
            (case when b.qastatus ='1' then (nvl(b.absrqty,0) - nvl(iq.issueqty,0)) end) BatchStock
-           ,nvl(ReservQty,0) as  ReservQty,r.LOCATIONNO
+           ,nvl(ReservQty,0) as  ReservQty, NVL(r.LOCATIONNO, b.stocklocation) AS LOCATIONNO
            , b.inwno,t.facilityid, mi.itemid as uniqueitemid,d.districtid,mc.mcid,mi.unitcount
            ,w.warehouseid,w.warehousename
            ,ft.facilitytypeid,ft.facilitytypecode,ft.uniqustats,
@@ -95,7 +95,7 @@ async function getFacilityStockDrugWise(facilityId) {
         inner join masfacilities f  on f.facilityid=t.facilityid 
         left outer join usrusers u on u.facilityid=f.facilityid
         left outer join masfacheaderfooter fh on fh.userid=u.userid
-        left outer join masracks r on r.rackid=b.stocklocation and r.WAREHOUSEID=f.facilityid
+        left outer join masracks r on TO_CHAR(r.rackid) = b.stocklocation and r.WAREHOUSEID=f.facilityid
         inner join masdistricts d on d.districtid=f.districtid
         inner join maswarehouses w on w.warehouseid=d.warehouseid
         inner join masfacilitytypes ft on ft.facilitytypeid=f.facilitytypeid

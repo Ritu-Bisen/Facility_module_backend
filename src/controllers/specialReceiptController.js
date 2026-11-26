@@ -504,7 +504,7 @@ async function getReceiptItems(req, res) {
         NVL(m.LOCATIONNO, 'Null') AS "stockLocationName"
       FROM tbFacilityReceiptBatches b
       INNER JOIN tbfacilityreceiptitems ri ON ri.facreceiptitemid = b.facreceiptitemid
-      LEFT OUTER JOIN masracks m ON m.rackid = b.StockLocation AND m.warehouseid = :facilityId
+      LEFT OUTER JOIN masracks m ON TO_CHAR(m.rackid) = b.StockLocation AND m.warehouseid = :facilityId
       WHERE ri.facreceiptid = :receiptId
       ORDER BY b.EXPDATE, b.BATCHNO
     `;

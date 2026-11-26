@@ -180,29 +180,6 @@ async function getNonEdlCreateIndentHeader(facilityId, finYearId, indentId) {
       }
     }
 
-    const checkQuery = `
-      select a.indentid, a.indentno, to_char(a.indentdate, 'dd-mm-yyyy') as indentdate,
-             a.status, a.accyrsetid, c.accyear
-      from masAnualIndent a
-      left outer join masaccyearsettings c on c.accyrsetid = a.accyrsetid
-      where a.NONEDLIndentType = 'Y'
-        and a.isReagent is null
-        and a.facilityid = :facId
-        and a.accyrsetid = :fyId
-    `;
-    const checkRes = await db.execute(checkQuery, { facId, fyId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
-    if (checkRes.rows && checkRes.rows.length > 0) {
-      const row = checkRes.rows[0];
-      return {
-        indentId: row.INDENTID || row.indentid,
-        indentNo: row.INDENTNO || row.indentno,
-        indentDate: row.INDENTDATE || row.indentdate,
-        status: row.STATUS || row.status || 'I',
-        accYear: row.ACCYEAR || row.accyear || '',
-        exists: true
-      };
-    }
-
     return {
       indentId: 0,
       indentNo: 'AUTO GENERATED',
@@ -571,7 +548,7 @@ async function getNonEdlCreateFinYears(facilityId, mode, indentId) {
 
     if (mode === 'Edit' && indId > 0) {
       const q = `
-        select c.accyrsetid, c.accyear,
+        select c.accyrsetid, c.accyear, c.shaccyear,
                case when sysdate between c.startdate and c.enddate then 'Y' else 'N' end as is_current
         from masAnualIndent a
         inner join masaccyearsettings c on c.accyrsetid = a.accyrsetid
@@ -582,22 +559,24 @@ async function getNonEdlCreateFinYears(facilityId, mode, indentId) {
         return res.rows.map(r => ({
           accYrSetId: r.ACCYRSETID || r.accyrsetid,
           accYear: r.ACCYEAR || r.accyear,
+          shAccYear: r.SHACCYEAR || r.shaccyear,
           isCurrent: (r.IS_CURRENT || r.is_current) === 'Y'
         }));
       }
     }
 
     const query = `
-      select c.accyrsetid, c.accyear,
+      select c.accyrsetid, c.accyear, c.shaccyear,
              case when sysdate between c.startdate and c.enddate then 'Y' else 'N' end as is_current
       from masaccyearsettings c
-      where c.accyrsetid > 546
+      where c.accyrsetid > 537
       order by c.accyrsetid desc
     `;
-    const result = await db.execute(query, { facId }, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const result = await db.execute(query, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
     return (result.rows || []).map(r => ({
       accYrSetId: r.ACCYRSETID || r.accYrSetId,
       accYear: r.ACCYEAR || r.accYear,
+      shAccYear: r.SHACCYEAR || r.shaccyear,
       isCurrent: (r.IS_CURRENT || r.is_current) === 'Y'
     }));
   } catch (error) {

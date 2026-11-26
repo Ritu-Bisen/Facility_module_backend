@@ -795,7 +795,7 @@ async function getPrintDetails(issueId, facilityId) {
                 ON rb.inwno = a.inwno
                 AND rb.facreceiptitemid = a.facreceiptitemid
             LEFT JOIN masracks mr
-                ON mr.rackid = rb.StockLocation
+                ON TO_CHAR(mr.rackid) = rb.StockLocation
             WHERE a.IssueItemID = :issueItemId
             ORDER BY rb.expdate
         `;

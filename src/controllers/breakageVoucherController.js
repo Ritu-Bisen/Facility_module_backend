@@ -290,7 +290,7 @@ exports.getAvailableBatches = async (req, res) => {
             FROM tbfacilityreceiptbatches rb 
             INNER JOIN tbfacilityreceiptitems i ON rb.facreceiptitemid=i.facreceiptitemid 
             INNER JOIN tbfacilityreceipts r ON r.facreceiptid=i.facreceiptid 
-            LEFT OUTER JOIN masracks mr ON mr.rackid = rb.StockLocation
+            LEFT OUTER JOIN masracks mr ON TO_CHAR(mr.rackid) = rb.StockLocation
             LEFT OUTER JOIN ( 
                SELECT FacilityID, sum(nvl(a.IssueQty,0)) as IssueQty, a.Inwno, a.facreceiptitemid 
                FROM tbfacilityoutwards a 

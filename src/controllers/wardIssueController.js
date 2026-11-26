@@ -269,7 +269,7 @@ async function getBatches(req, res) {
       INNER JOIN tbfacilityissueitems tbi ON tbi.issueitemid = a.issueitemid
       INNER JOIN tbfacilityissues tb ON tb.issueid = tbi.issueid
       INNER JOIN tbFacilityReceiptBatches rb ON rb.inwno = a.inwno AND rb.facreceiptitemid = a.facreceiptitemid
-      LEFT OUTER JOIN masracks mr ON mr.rackid = rb.StockLocation
+      LEFT OUTER JOIN masracks mr ON TO_CHAR(mr.rackid) = rb.StockLocation
       INNER JOIN tbfacilityreceiptitems ri ON ri.facreceiptitemid = rb.facreceiptitemid
       WHERE tb.FacilityID = :facilityId
         AND tbi.IssueItemID = :issueItemId

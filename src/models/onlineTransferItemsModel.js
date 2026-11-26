@@ -233,7 +233,7 @@ async function getBatches(facilityId, issueItemId, itemId) {
           AND rb.facreceiptitemid = a.facreceiptitemid
           AND (rb.whissueblock IS NULL OR rb.whissueblock = 0)
       LEFT JOIN masracks mr
-          ON mr.rackid = rb.StockLocation
+          ON TO_CHAR(mr.rackid) = rb.StockLocation
       INNER JOIN tbfacilityreceiptitems ri
           ON ri.facreceiptitemid = rb.facreceiptitemid
       WHERE tb.FacilityID = :facilityId
