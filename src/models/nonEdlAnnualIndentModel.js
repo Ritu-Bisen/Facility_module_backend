@@ -572,7 +572,7 @@ async function getNonEdlCreateFinYears(facilityId, mode, indentId) {
       where c.accyrsetid > 537
       order by c.accyrsetid desc
     `;
-    const result = await db.execute(query, {}, { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    const result = await db.execute(query, [], { outFormat: oracledb.OUT_FORMAT_OBJECT });
     return (result.rows || []).map(r => ({
       accYrSetId: r.ACCYRSETID || r.accYrSetId,
       accYear: r.ACCYEAR || r.accYear,

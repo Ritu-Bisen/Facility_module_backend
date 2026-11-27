@@ -59,6 +59,49 @@ async function close() {
   }
 }
 
+/**
+ * Extracts bind placeholders from SQL query, ignoring strings and comments.
+ */
+function getPlaceholders(sql) {
+  if (typeof sql !== 'string') return new Set();
+  let cleaned = sql.replace(/--.*$/gm, '');
+  cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '');
+  cleaned = cleaned.replace(/'(?:''|[^'])*'/g, '');
+  const matches = cleaned.match(/:([a-zA-Z0-9_$]+)/g) || [];
+  return new Set(matches.map((m) => m.slice(1).toLowerCase()));
+}
+
+/**
+ * Sanitizes bind parameters to prevent Oracle NJS-098 errors:
+ * - If SQL has 0 bind placeholders, ensures binds is empty ([] or {}).
+ * - If binds is an object, strips keys that do not exist as placeholders in SQL.
+ */
+function sanitizeBinds(sql, binds) {
+  if (!binds) return binds;
+  if (Array.isArray(binds) && binds.length === 0) return binds;
+  if (typeof binds === 'object' && !Array.isArray(binds) && Object.keys(binds).length === 0) return binds;
+
+  const placeholders = getPlaceholders(sql);
+
+  if (placeholders.size === 0) {
+    if (Array.isArray(binds)) return [];
+    if (typeof binds === 'object') return {};
+    return binds;
+  }
+
+  if (typeof binds === 'object' && !Array.isArray(binds)) {
+    const sanitized = {};
+    for (const [key, val] of Object.entries(binds)) {
+      if (placeholders.has(key.toLowerCase())) {
+        sanitized[key] = val;
+      }
+    }
+    return sanitized;
+  }
+
+  return binds;
+}
+
 async function execute(sql, binds = [], opts = {}) {
   let connection;
   const maxRetries = 2;
@@ -70,11 +113,12 @@ async function execute(sql, binds = [], opts = {}) {
       connection = await p.getConnection();
 
       const options = { autoCommit: true, ...opts };
-      const result = await connection.execute(sql, binds, options);
+      const safeBinds = sanitizeBinds(sql, binds);
+      const result = await connection.execute(sql, safeBinds, options);
       return result;
     } catch (err) {
       attempt++;
-      const isConnectionError = /NJS-|ORA-12170|ORA-12541|ORA-03113|ORA-03114|ORA-12514|DPI-1080/i.test(err.message);
+      const isConnectionError = /NJS-(003|018|040|500|511|516)|ORA-12170|ORA-12541|ORA-03113|ORA-03114|ORA-12514|DPI-1080/i.test(err.message);
       if (isConnectionError && attempt <= maxRetries) {
         logger.warn(`Database connection error, retrying (${attempt}/${maxRetries}): ${err.message}`);
         try {
@@ -102,7 +146,13 @@ async function execute(sql, binds = [], opts = {}) {
 
 async function getConnection() {
   const p = await getPool();
-  return await p.getConnection();
+  const conn = await p.getConnection();
+  const originalExecute = conn.execute.bind(conn);
+  conn.execute = function (sql, binds, options) {
+    const safeBinds = sanitizeBinds(sql, binds);
+    return originalExecute(sql, safeBinds, options);
+  };
+  return conn;
 }
 
 module.exports = {
